@@ -8,6 +8,8 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import type { Goal, Phase, Action } from '@/lib/types'
 import { useRouter } from 'next/navigation'
+import { toast } from 'sonner'
+import { handleApiResponse } from '@/lib/utils'
 
 /**
  * 【执行力强化】精简的 Props
@@ -99,18 +101,17 @@ export default function TodayView({ goal, phase, action, hasCurrentAction }: Tod
         }),
       })
 
-      const data = await response.json()
+      const result = await handleApiResponse(response, '系统操作失败，请重试')
 
-      if (data.success) {
+      if (result.success) {
         setIsDialogOpen(false)
+        toast.success('行动已完成')
         router.refresh()
-      } else {
-        // 【执行力强化】使用系统语言，而非错误语言
-        alert('系统不允许此操作，Action 可能已完成或状态异常')
       }
+      // handleApiResponse 已处理错误提示
     } catch (error) {
-      console.error('Error completing action:', error)
-      alert('系统操作失败，请重试')
+      // handleApiResponse 已处理网络错误，这里只记录日志
+      // 如果需要额外处理，可以在这里添加
     } finally {
       setIsSubmitting(false)
     }
@@ -134,17 +135,16 @@ export default function TodayView({ goal, phase, action, hasCurrentAction }: Tod
         }),
       })
 
-      const data = await response.json()
+      const result = await handleApiResponse(response, '系统操作失败，请重试')
 
-      if (data.success) {
+      if (result.success) {
+        toast.success('已标记为未完成')
         router.refresh()
-      } else {
-        // 【执行力强化】使用系统语言
-        alert('系统不允许此操作，Action 可能已完成')
       }
+      // handleApiResponse 已处理错误提示
     } catch (error) {
-      console.error('Error marking incomplete:', error)
-      alert('系统操作失败，请重试')
+      // handleApiResponse 已处理网络错误，这里只记录日志
+      // 如果需要额外处理，可以在这里添加
     } finally {
       setIsSubmitting(false)
     }

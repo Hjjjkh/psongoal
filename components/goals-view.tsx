@@ -10,6 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import type { Goal, Phase, Action } from '@/lib/types'
 import { Plus, ChevronDown, ChevronRight } from 'lucide-react'
+import { toast } from 'sonner'
+import { handleApiResponse } from '@/lib/utils'
 
 interface GoalWithDetails extends Goal {
   phases: (Phase & { actions: Action[] })[]
@@ -64,19 +66,20 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
         }),
       })
 
-      if (response.ok) {
+      const result = await handleApiResponse(response, '创建失败，请重试')
+
+      if (result.success) {
+        toast.success('目标创建成功')
         router.refresh()
         setIsGoalDialogOpen(false)
         setGoalName('')
         setGoalCategory('health')
         setGoalStartDate('')
         setGoalEndDate('')
-      } else {
-        alert('创建失败，请重试')
       }
+      // handleApiResponse 已处理错误提示
     } catch (error) {
-      console.error('Error creating goal:', error)
-      alert('创建失败，请重试')
+      // handleApiResponse 已处理网络错误
     } finally {
       setIsCreatingGoal(false)
     }
@@ -97,18 +100,19 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
         }),
       })
 
-      if (response.ok) {
+      const result = await handleApiResponse(response, '创建失败，请重试')
+
+      if (result.success) {
+        toast.success('阶段创建成功')
         router.refresh()
         setIsPhaseDialogOpen(false)
         setSelectedGoalId(null)
         setPhaseName('')
         setPhaseDescription('')
-      } else {
-        alert('创建失败，请重试')
       }
+      // handleApiResponse 已处理错误提示
     } catch (error) {
-      console.error('Error creating phase:', error)
-      alert('创建失败，请重试')
+      // handleApiResponse 已处理网络错误
     } finally {
       setIsCreatingPhase(false)
     }
@@ -130,19 +134,20 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
         }),
       })
 
-      if (response.ok) {
+      const result = await handleApiResponse(response, '创建失败，请重试')
+
+      if (result.success) {
+        toast.success('行动创建成功')
         router.refresh()
         setIsActionDialogOpen(false)
         setSelectedPhaseId(null)
         setActionTitle('')
         setActionDefinition('')
         setActionEstimatedTime('')
-      } else {
-        alert('创建失败，请重试')
       }
+      // handleApiResponse 已处理错误提示
     } catch (error) {
-      console.error('Error creating action:', error)
-      alert('创建失败，请重试')
+      // handleApiResponse 已处理网络错误
     } finally {
       setIsCreatingAction(false)
     }
@@ -156,14 +161,15 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
         body: JSON.stringify({ goal_id: goalId }),
       })
 
-      if (response.ok) {
+      const result = await handleApiResponse(response, '设置失败，请重试')
+
+      if (result.success) {
+        toast.success('当前目标已设置')
         router.push('/today')
-      } else {
-        alert('设置失败，请重试')
       }
+      // handleApiResponse 已处理错误提示
     } catch (error) {
-      console.error('Error setting current goal:', error)
-      alert('设置失败，请重试')
+      // handleApiResponse 已处理网络错误
     }
   }
 
@@ -342,7 +348,7 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
             </div>
             <div className="space-y-2">
               <Label htmlFor="goal-category">类别</Label>
-              <Select value={goalCategory} onValueChange={(v: any) => setGoalCategory(v)}>
+              <Select value={goalCategory} onValueChange={(v: 'health' | 'learning' | 'project') => setGoalCategory(v)}>
                 <SelectTrigger id="goal-category">
                   <SelectValue />
                 </SelectTrigger>

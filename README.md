@@ -5,10 +5,13 @@
 ## 系统架构
 
 ### 技术栈
-- **前端**: Next.js 14 (App Router)
-- **UI**: shadcn/ui + Tailwind CSS
+- **前端框架**: Next.js 14 (App Router)
+- **UI 组件**: shadcn/ui + Tailwind CSS
+- **认证**: Supabase Auth (SSR)
 - **后端/数据库**: Supabase (PostgreSQL)
-- **部署**: Zeabur
+- **状态管理**: React Server Components
+- **类型安全**: TypeScript
+- **部署**: Zeabur / Vercel
 
 ### 核心设计理念
 1. **每日唯一行动**: 系统每天只展示一个 Action，强制用户聚焦
@@ -91,26 +94,38 @@ psongoal/
 
 ## 本地开发
 
-### 1. 安装依赖
+### 1. 克隆仓库
+```bash
+git clone https://github.com/your-username/psongoal.git
+cd psongoal
+```
+
+### 2. 安装依赖
 ```bash
 npm install
 ```
 
-### 2. 配置 Supabase
-1. 在 Supabase 创建项目
-2. 在 SQL Editor 中执行 `supabase/schema.sql`
+### 3. 配置 Supabase
+1. 在 [Supabase](https://supabase.com) 创建项目
+2. 在 SQL Editor 中执行 `supabase/schema.sql` 创建表结构
 3. 创建 `.env.local` 文件：
-```
-NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+```env
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 ```
 
-### 3. 运行开发服务器
+### 4. 运行开发服务器
 ```bash
 npm run dev
 ```
 
 访问 http://localhost:3000
+
+### 5. 构建生产版本
+```bash
+npm run build
+npm start
+```
 
 ## Zeabur 部署
 
@@ -143,12 +158,70 @@ Zeabur 会自动检测 Next.js 项目并配置，点击部署即可。
 4. **每日执行**: 在 `/today` 页面完成当日 Action
 5. **查看复盘**: 在 `/dashboard` 查看进度和统计
 
+## 核心特性
+
+### 认证系统
+- 使用 Supabase Auth 进行用户认证
+- 支持邮箱密码登录/注册
+- 使用 Next.js Middleware 进行路由保护
+- SSR 支持，确保服务端正确读取 session
+
+### 数据安全
+- Row Level Security (RLS) 已启用
+- 用户只能访问和操作自己的数据
+- 所有 API 路由都进行用户验证
+
+### 系统状态管理
+- 每个用户有独立的 SystemState
+- 自动推进机制：完成当前 Action 后自动推进到下一个
+- 不可跳过：未完成的 Action 会阻止系统推进
+
 ## 注意事项
 
 - 系统使用 Row Level Security (RLS)，用户只能访问自己的数据
 - 每个用户有独立的 SystemState
 - Action 必须按顺序完成，不能跳过
 - 未完成的 Action 会阻止系统推进
+- 确保使用 `@supabase/ssr@^0.8.0` 或更高版本以支持正确的 cookie 解析
+
+## 项目结构说明
+
+```
+psongoal/
+├── app/                    # Next.js App Router 页面和路由
+│   ├── api/               # API 路由（Server Actions）
+│   ├── auth/              # 认证相关页面
+│   ├── today/             # 今日行动页面（核心功能）
+│   ├── goals/             # 目标规划页面
+│   └── dashboard/         # 数据看板页面
+├── components/             # React 组件
+│   ├── ui/                # shadcn/ui 基础组件
+│   └── *.tsx              # 业务组件
+├── lib/                   # 工具函数和配置
+│   ├── supabase/          # Supabase 客户端配置
+│   ├── system-state.ts    # 系统状态推进逻辑（核心）
+│   └── types.ts           # TypeScript 类型定义
+├── middleware.ts           # Next.js Middleware（路由保护）
+└── supabase/              # 数据库相关
+    └── schema.sql         # 数据库表结构
+```
+
+## 开发指南
+
+### 添加新功能
+1. 在 `app/api/` 下创建新的 API 路由
+2. 在 `components/` 下创建对应的 UI 组件
+3. 更新 `lib/types.ts` 添加新的类型定义（如需要）
+4. 确保所有数据库操作都通过 RLS 策略保护
+
+### 数据库迁移
+1. 在 `supabase/` 目录下创建新的 SQL 迁移文件
+2. 在 Supabase Dashboard 的 SQL Editor 中执行
+3. 更新 `supabase/schema.sql` 保持同步
+
+## 贡献
+
+欢迎提交 Issue 和 Pull Request！
 
 ## 许可证
 

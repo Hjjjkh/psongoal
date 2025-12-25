@@ -1,45 +1,109 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import React, { useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { createClient } from '@/lib/supabase/client'
+import { toast } from 'sonner'
+
+// 密码强度验证
+function validatePassword(password: string): { valid: boolean; message?: string } {
+  if (password.length < 8) {
+    return { valid: false, message: '密码至少需要 8 个字符' }
+  }
+  if (!/[a-zA-Z]/.test(password)) {
+    return { valid: false, message: '密码必须包含至少一个字母' }
+  }
+  if (!/[0-9]/.test(password)) {
+    return { valid: false, message: '密码必须包含至少一个数字' }
+  }
+  return { valid: true }
+}
 
 export default function LoginPage() {
-  const router = useRouter()
+  const searchParams = useSearchParams()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [isSignUp, setIsSignUp] = useState(false)
+  const [passwordError, setPasswordError] = useState<string>('')
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    
+    // 注册时验证密码
+    if (isSignUp) {
+      const validation = validatePassword(password)
+      if (!validation.valid) {
+        setPasswordError(validation.message || '')
+        toast.error(validation.message || '密码不符合要求')
+        return
+      }
+      setPasswordError('')
+    }
+
     setIsLoading(true)
 
-    const supabase = createClient()
-
     try {
+      const supabase = createClient()
+
       if (isSignUp) {
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email,
           password,
         })
-        if (error) throw error
-        alert('注册成功！请检查邮箱验证链接')
+        if (error) {
+          console.error('Sign up error:', error)
+          throw error
+        }
+        console.log('Sign up success:', data)
+        toast.success('注册成功！请检查邮箱验证链接')
+        // 注册成功后自动切换到登录模式
+        setIsSignUp(false)
+        setEmail('')
+        setPassword('')
       } else {
-        const { error } = await supabase.auth.signInWithPassword({
+        // 登录逻辑：调用 signInWithPassword，成功后直接跳转
+        const { data, error } = await supabase.auth.signInWithPassword({
           email,
           password,
         })
-        if (error) throw error
-        router.push('/today')
-        router.refresh()
+        if (error) {
+          console.error('Sign in error:', error)
+          throw error
+        }
+        
+        // 验证登录是否成功
+        if (!data.session) {
+          throw new Error('登录失败：未获取到 session')
+        }
+        
+        // 登录成功，获取重定向目标（如果有）
+        const redirectTo = searchParams.get('redirectedFrom') || '/today'
+        // 使用 window.location.href 进行硬刷新跳转
+        // 这会触发完整的 HTTP 请求，让 middleware 重新读取 session cookie
+        window.location.href = redirectTo
       }
-    } catch (error: any) {
-      alert(error.message || '操作失败')
+    } catch (error: unknown) {
+      console.error('Auth error:', error)
+      let message = '操作失败，请检查网络连接'
+      
+      if (error instanceof Error) {
+        message = error.message
+        // 处理常见的网络错误
+        if (error.message.includes('fetch') || error.message.includes('network')) {
+          message = '网络连接失败，请检查网络设置或稍后重试'
+        } else if (error.message.includes('Invalid API key')) {
+          message = 'API 密钥错误，请检查配置'
+        } else if (error.message.includes('Invalid login credentials')) {
+          message = '邮箱或密码错误'
+        }
+      }
+      
+      toast.error(message)
     } finally {
       setIsLoading(false)
     }
@@ -75,10 +139,21 @@ export default function LoginPage() {
                 id="password"
                 type="password"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => {
+                  setPassword(e.target.value)
+                  setPasswordError('')
+                }}
                 required
                 placeholder="••••••••"
               />
+              {passwordError && (
+                <p className="text-sm text-destructive">{passwordError}</p>
+              )}
+              {isSignUp && (
+                <p className="text-xs text-muted-foreground">
+                  密码至少 8 位，包含字母和数字
+                </p>
+              )}
             </div>
             <Button type="submit" className="w-full" disabled={isLoading}>
               {isLoading ? '处理中...' : isSignUp ? '注册' : '登录'}

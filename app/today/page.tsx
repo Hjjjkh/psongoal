@@ -1,4 +1,3 @@
-import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { getSystemState, initSystemState } from '@/lib/system-state'
 import TodayView from '@/components/today-view'
@@ -6,11 +5,19 @@ import TodayView from '@/components/today-view'
 export default async function TodayPage() {
   const supabase = await createClient()
   
-  // 检查认证
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
+  // 假设：能进来 = 一定登录了（middleware 已经处理了认证）
+  const { data: { user } } = await supabase.auth.getUser()
   
-  if (authError || !user) {
-    redirect('/auth/login')
+  if (!user) {
+    // 理论上不应该到达这里，但如果到达了，返回错误状态
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <div className="text-center space-y-4">
+          <p className="text-lg font-semibold">认证错误</p>
+          <p className="text-muted-foreground">请刷新页面</p>
+        </div>
+      </div>
+    )
   }
 
   // 初始化或获取系统状态

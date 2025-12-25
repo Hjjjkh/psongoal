@@ -5,9 +5,13 @@ import GoalsView from '@/components/goals-view'
 export default async function GoalsPage() {
   const supabase = await createClient()
   
+  // 检查认证（后备检查，middleware 应该已经处理了认证和重定向）
+  // 如果 middleware 正常工作，这里不会执行到
+  // 如果 middleware 失效，这里作为后备保障
   const { data: { user }, error: authError } = await supabase.auth.getUser()
   
   if (authError || !user) {
+    // Middleware 应该已经重定向，但如果到达这里，执行重定向
     redirect('/auth/login')
   }
 
