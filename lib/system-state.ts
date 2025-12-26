@@ -2,7 +2,8 @@ import { createClient } from './supabase/server'
 import type { SystemState, Action, Phase, Goal } from './types'
 
 /**
- * 获取当前系统状态
+ * 获取当前目标执行状态
+ * 仅用于管理用户当前正在执行的目标/阶段/行动
  */
 export async function getSystemState(userId: string): Promise<SystemState | null> {
   const supabase = await createClient()
@@ -22,7 +23,8 @@ export async function getSystemState(userId: string): Promise<SystemState | null
 }
 
 /**
- * 初始化系统状态（如果不存在）
+ * 初始化目标执行状态（如果不存在）
+ * 仅用于目标执行流程的状态管理
  */
 export async function initSystemState(userId: string): Promise<SystemState | null> {
   const supabase = await createClient()
@@ -50,7 +52,8 @@ export async function initSystemState(userId: string): Promise<SystemState | nul
 }
 
 /**
- * 更新系统状态
+ * 更新目标执行状态
+ * 仅用于更新当前执行的目标/阶段/行动
  */
 export async function updateSystemState(
   userId: string,
@@ -76,9 +79,9 @@ export async function updateSystemState(
 }
 
 /**
- * 获取下一个 Action（推进逻辑核心）
+ * 获取目标执行流程中的下一个 Action
+ * 仅用于目标执行推进逻辑
  * 
- * 【执行力增强修改】
  * 规则：
  * 1. 推进条件必须是：actions.completed_at IS NOT NULL
  * 2. 如果当前 Action 的 completed_at 为 NULL，直接 return null（不能推进）
@@ -168,9 +171,9 @@ export async function getNextAction(
 }
 
 /**
- * 完成当前 Action 并推进到下一个
+ * 完成当前目标执行中的 Action 并推进到下一个
+ * 仅用于目标执行流程
  * 
- * 【执行力增强修改】
  * 规则：
  * 1. 完成 Action 时，必须执行两个原子步骤：
  *    a) 记录 daily_executions（用于统计与复盘）
@@ -206,7 +209,24 @@ export async function completeActionAndAdvance(
     return { success: false, nextActionId: null }
   }
 
-  // 1. 原子步骤 a：记录今日执行（用于统计与复盘）
+  // 1. 【每日唯一行动约束】在更新之前检查今天是否已经完成过行动
+  // 如果今天已经完成过其他行动，拒绝完成
+  const { data: todayExecutions } = await supabase
+    .from('daily_executions')
+    .select('action_id')
+    .eq('user_id', userId)
+    .eq('date', today)
+    .eq('completed', true)
+
+  if (todayExecutions && todayExecutions.length > 0) {
+    const hasOtherCompletedToday = todayExecutions.some(e => e.action_id !== actionId)
+    if (hasOtherCompletedToday) {
+      console.error('User has already completed an action today, cannot complete another:', userId)
+      return { success: false, nextActionId: null }
+    }
+  }
+
+  // 2. 原子步骤 a：记录今日执行（用于统计与复盘）
   const { error: executionError } = await supabase
     .from('daily_executions')
     .upsert({
@@ -225,7 +245,7 @@ export async function completeActionAndAdvance(
     return { success: false, nextActionId: null }
   }
 
-  // 2. 原子步骤 b：更新 actions.completed_at（推进的唯一真相源）
+  // 3. 原子步骤 b：更新 actions.completed_at（推进的唯一真相源）
   const { error: updateActionError } = await supabase
     .from('actions')
     .update({ completed_at: today })
@@ -236,36 +256,22 @@ export async function completeActionAndAdvance(
     return { success: false, nextActionId: null }
   }
 
-  // 3. 获取下一个 Action（基于 completed_at 判断）
+  // 4. 获取下一个 Action（基于 completed_at 判断）
   const nextAction = await getNextAction(userId, actionId)
 
-  // 4. 更新系统状态
-  if (nextAction) {
-    // 获取 nextAction 的 phase
-    const { data: nextPhase } = await supabase
-      .from('phases')
-      .select('goal_id')
-      .eq('id', nextAction.phase_id)
-      .single()
-
-    if (nextPhase) {
-      await updateSystemState(userId, {
-        current_action_id: nextAction.id,
-        current_phase_id: nextAction.phase_id,
-        current_goal_id: nextPhase.goal_id,
-      })
-    }
-
-    return { success: true, nextActionId: nextAction.id }
-  } else {
+  // 5. 【每日唯一行动约束】完成行动后，不立即推进到下一个行动
+  // 系统状态保持当前行动，但标记为已完成
+  // 下一个行动将在第二天自动显示（通过 today/page.tsx 的日期检查）
+  
+  // 如果目标已完成，更新系统状态
+  if (!nextAction) {
     // 【重要】没有下一个 Action（Goal 完成），必须显式更新 system_states.current_action_id = null
     await updateSystemState(userId, {
       current_action_id: null,
       // current_phase_id 和 current_goal_id 可以保留，用于显示已完成的目标信息
     })
     
-    // 可选：标记 Goal 为 completed（如果业务需要）
-    // 注意：这里需要获取当前 Goal ID，可以通过 systemState 获取
+    // 标记 Goal 为 completed
     const systemState = await getSystemState(userId)
     if (systemState?.current_goal_id) {
       await supabase
@@ -277,12 +283,16 @@ export async function completeActionAndAdvance(
 
     return { success: true, nextActionId: null }
   }
+
+  // 有下一个行动，但不立即推进（保持当前行动状态）
+  // 返回 nextActionId 用于前端提示，但系统状态不更新
+  return { success: true, nextActionId: nextAction.id }
 }
 
 /**
- * 标记 Action 为未完成（不推进）
+ * 标记目标执行中的 Action 为未完成（不推进）
+ * 仅用于目标执行流程
  * 
- * 【执行力增强修改】
  * 规则：
  * 1. 不允许撤销已完成（completed_at 非空）的 Action
  * 2. 如果 action.completed_at 已存在，直接返回 false

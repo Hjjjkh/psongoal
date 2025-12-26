@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
-import { getSystemState, initSystemState } from '@/lib/system-state'
+import { getSystemState, initSystemState, getNextAction, updateSystemState } from '@/lib/system-state'
 import TodayView from '@/components/today-view'
 
 export default async function TodayPage() {
@@ -38,6 +38,15 @@ export default async function TodayPage() {
     )
   }
 
+  // 检查用户是否有任何目标（用于新用户引导）
+  const { data: userGoals } = await supabase
+    .from('goals')
+    .select('id')
+    .eq('user_id', user.id)
+    .limit(1)
+
+  const hasAnyGoals = !!(userGoals && userGoals.length > 0)
+
   // 【执行力强化】只获取当前 Action 数据，不查询 execution
   // 所有"是否允许完成"的判断交由后端 API 和 SystemState 处理
   let goal = null
@@ -45,6 +54,129 @@ export default async function TodayPage() {
   let action = null
 
   if (systemState.current_action_id) {
+    // 【每日唯一行动约束】检查今天是否已经完成过行动
+    const today = new Date().toISOString().split('T')[0]
+    const { data: todayExecutions } = await supabase
+      .from('daily_executions')
+      .select('action_id, completed')
+      .eq('user_id', user.id)
+      .eq('date', today)
+      .eq('completed', true)
+      .limit(1)
+
+    // 如果今天已经完成过行动，不显示当前行动，而是显示完成提示
+    if (todayExecutions && todayExecutions.length > 0) {
+      // 今天已完成，显示完成提示
+      // 检查目标是否已完成
+      const { data: goalData } = await supabase
+        .from('goals')
+        .select('*')
+        .eq('id', systemState.current_goal_id)
+        .single()
+
+      return (
+        <TodayView
+          goal={goalData}
+          phase={null}
+          action={null}
+          hasCurrentAction={false}
+          hasAnyGoals={hasAnyGoals}
+          goalProgress={null}
+          remainingActions={0}
+          consecutiveDays={0}
+        />
+      )
+    }
+
+    // 【自动推进逻辑】如果当前行动已完成，且今天没有完成记录，自动推进到下一个行动
+    // 这处理了"昨天完成，今天应该显示下一个行动"的情况
+    const { data: currentActionCheck } = await supabase
+      .from('actions')
+      .select('completed_at, id, phase_id')
+      .eq('id', systemState.current_action_id)
+      .single()
+
+    if (currentActionCheck?.completed_at) {
+      // 当前行动已完成，检查是否有下一个行动
+      const nextAction = await getNextAction(user.id, currentActionCheck.id)
+      if (nextAction) {
+        // 有下一个行动，自动推进（这是新的一天，应该显示下一个行动）
+        await updateSystemState(user.id, {
+          current_action_id: nextAction.id,
+          current_phase_id: nextAction.phase_id,
+          current_goal_id: systemState.current_goal_id,
+        })
+        // 更新 systemState 以便后续使用
+        systemState.current_action_id = nextAction.id
+        systemState.current_phase_id = nextAction.phase_id
+        // 继续获取下一个行动的数据（重新查询以获取完整信息）
+        const { data: nextActionData } = await supabase
+          .from('actions')
+          .select(`
+            *,
+            phases!inner(
+              *,
+              goals!inner(*)
+            )
+          `)
+          .eq('id', nextAction.id)
+          .single()
+
+        if (nextActionData) {
+          action = {
+            id: nextActionData.id,
+            phase_id: nextActionData.phase_id,
+            title: nextActionData.title,
+            definition: nextActionData.definition,
+            estimated_time: nextActionData.estimated_time,
+            order_index: nextActionData.order_index,
+            completed_at: nextActionData.completed_at,
+            created_at: nextActionData.created_at,
+          }
+          phase = nextActionData.phases
+          goal = nextActionData.phases.goals
+          // 直接返回，不再继续执行后续逻辑
+          return (
+            <TodayView
+              goal={goal}
+              phase={phase}
+              action={action}
+              hasCurrentAction={true}
+              hasAnyGoals={hasAnyGoals}
+              needsPhase={false}
+              needsAction={false}
+              goalProgress={null}
+              remainingActions={0}
+              consecutiveDays={0}
+            />
+          )
+        }
+      } else {
+        // 没有下一个行动，目标已完成
+        await updateSystemState(user.id, {
+          current_action_id: null,
+        })
+        const { data: goalData } = await supabase
+          .from('goals')
+          .select('*')
+          .eq('id', systemState.current_goal_id)
+          .single()
+
+        return (
+          <TodayView
+            goal={goalData}
+            phase={null}
+            action={null}
+            hasCurrentAction={false}
+            hasAnyGoals={hasAnyGoals}
+            goalProgress={null}
+            remainingActions={0}
+            consecutiveDays={0}
+          />
+        )
+      }
+    }
+
     // 获取 Action 及其关联数据
     const { data: actionData } = await supabase
       .from('actions')
@@ -58,7 +190,76 @@ export default async function TodayPage() {
       .eq('id', systemState.current_action_id)
       .single()
 
+    if (!actionData) {
+      // 系统状态指向的行动不存在，可能是目标没有行动
+      // 获取当前目标信息用于显示提示
+      if (systemState.current_goal_id) {
+        const { data: currentGoal } = await supabase
+          .from('goals')
+          .select('*')
+          .eq('id', systemState.current_goal_id)
+          .single()
+        
+        if (currentGoal) {
+          // 检查目标是否有阶段和行动
+          const { data: phases } = await supabase
+            .from('phases')
+            .select('id')
+            .eq('goal_id', currentGoal.id)
+            .limit(1)
+          
+          if (!phases || phases.length === 0) {
+            // 目标没有阶段，需要创建阶段
+            return (
+              <TodayView
+                goal={currentGoal}
+                phase={null}
+                action={null}
+                hasCurrentAction={false}
+                hasAnyGoals={hasAnyGoals}
+                needsPhase={true}
+                goalProgress={null}
+                remainingActions={0}
+                consecutiveDays={0}
+              />
+            )
+          } else {
+            // 目标有阶段但没有行动，需要创建行动
+            return (
+              <TodayView
+                goal={currentGoal}
+                phase={null}
+                action={null}
+                hasCurrentAction={false}
+                hasAnyGoals={hasAnyGoals}
+                needsAction={true}
+                goalProgress={null}
+                remainingActions={0}
+                consecutiveDays={0}
+              />
+            )
+          }
+        }
+      }
+      // 如果无法获取目标信息，显示系统异常
+      return (
+        <TodayView
+          goal={null}
+          phase={null}
+          action={null}
+          hasCurrentAction={false}
+          hasAnyGoals={hasAnyGoals}
+          goalProgress={null}
+          remainingActions={0}
+          consecutiveDays={0}
+        />
+      )
+    }
+
     if (actionData) {
+      // 正常情况：行动未完成，可以显示
+      // 注意：如果行动已完成，应该已经在之前的自动推进逻辑中处理了
+      // 如果到达这里，说明行动未完成，可以正常显示
       action = {
         id: actionData.id,
         phase_id: actionData.phase_id,
@@ -74,6 +275,94 @@ export default async function TodayPage() {
     }
   }
 
+  // 计算目标进度和上下文信息（仅在有效目标时计算）
+  let goalProgress = null
+  let remainingActions = 0
+  let consecutiveDays = 0
+
+  if (goal && systemState.current_goal_id) {
+    // 计算目标进度
+    const { data: goalPhases } = await supabase
+      .from('phases')
+      .select('id')
+      .eq('goal_id', goal.id)
+
+    if (goalPhases && goalPhases.length > 0) {
+      const phaseIds = goalPhases.map(p => p.id)
+      const { data: allActions } = await supabase
+        .from('actions')
+        .select('id, completed_at, order_index')
+        .in('phase_id', phaseIds)
+
+      if (allActions) {
+        const totalActions = allActions.length
+        const completedActions = allActions.filter(a => a.completed_at).length
+        const currentActionIndex = action ? allActions.findIndex(a => a.id === action.id) : -1
+        
+        // 计算剩余行动数（从当前行动到最后一个行动）
+        if (currentActionIndex >= 0) {
+          remainingActions = totalActions - currentActionIndex - 1
+        } else {
+          remainingActions = totalActions - completedActions
+        }
+
+        goalProgress = {
+          total: totalActions,
+          completed: completedActions,
+          percentage: totalActions > 0 ? Math.round((completedActions / totalActions) * 100) : 0,
+        }
+      }
+    }
+
+    // 计算连续完成天数（跨目标）
+    const { data: allExecutions } = await supabase
+      .from('daily_executions')
+      .select('date, completed')
+      .eq('user_id', user.id)
+      .eq('completed', true)
+      .order('date', { ascending: false })
+
+    if (allExecutions && allExecutions.length > 0) {
+      // 按日期去重，获取所有有完成记录的日期（每天只应该有一条完成记录）
+      const dateMap: Record<string, boolean> = {}
+      for (const e of allExecutions) {
+        if (e.completed === true && e.date && typeof e.date === 'string') {
+          dateMap[e.date] = true
+        }
+      }
+      
+      // 获取所有日期并排序（从新到旧）
+      const sortedDates = Object.keys(dateMap).sort().reverse()
+      
+      if (sortedDates.length > 0) {
+        const todayForConsecutive = new Date()
+        todayForConsecutive.setHours(0, 0, 0, 0)
+        const todayStrForConsecutive = todayForConsecutive.toISOString().split('T')[0]
+        
+        // 检查今天是否有完成记录
+        const todayHasCompletion = dateMap[todayStrForConsecutive] === true
+        
+        // 从今天或昨天开始计算（如果今天没有完成，从昨天开始）
+        let checkDate = new Date(todayForConsecutive)
+        if (!todayHasCompletion) {
+          checkDate.setDate(checkDate.getDate() - 1)
+        }
+        
+        // 连续往前检查，直到找到没有完成记录的一天
+        for (let i = 0; i < 365; i++) {
+          const dateStr = checkDate.toISOString().split('T')[0]
+          
+          if (dateMap[dateStr] === true) {
+            consecutiveDays++
+            checkDate.setDate(checkDate.getDate() - 1)
+          } else {
+            break
+          }
+        }
+      }
+    }
+  }
+
   // 【执行力强化】传递 systemState.current_action_id 用于状态判断
   // 如果为 null，表示目标已完成或未设置
   return (
@@ -82,6 +371,12 @@ export default async function TodayPage() {
       phase={phase}
       action={action}
       hasCurrentAction={systemState.current_action_id !== null}
+      hasAnyGoals={hasAnyGoals}
+      needsPhase={false}
+      needsAction={false}
+      goalProgress={goalProgress}
+      remainingActions={remainingActions}
+      consecutiveDays={consecutiveDays}
     />
   )
 }

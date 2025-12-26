@@ -1,10 +1,10 @@
 /**
- * 强裁决型完成接口
+ * 行动完成接口
  * 
- * 设计原则：
- * 1. This API is a system-level adjudicator. Frontend state is not trusted.
- * 2. completed_at is the single source of truth for advancement.
- * 3. Action 只能完成一次，已完成 Action 永远不可再次完成（包括并发、重复请求）
+ * 约束规则（仅用于当前目标执行应用）：
+ * 1. 这是应用级的裁决接口，前端状态不可信
+ * 2. completed_at 是推进的唯一真相源
+ * 3. 行动只能完成一次，已完成的行动永远不可再次完成（包括并发、重复请求）
  * 4. 是否允许完成、是否推进，全部由后端裁决
  * 5. 返回清晰、可区分的 HTTP 状态码（不是一律 500）
  * 
@@ -15,8 +15,8 @@
  * 
  * 为什么使用 409 Conflict：
  * - 409 Conflict 表示请求与当前资源状态冲突
- * - Action 已完成是一种状态冲突，不是错误
- * - 区分"系统拒绝"（409）和"系统错误"（500）
+ * - 行动已完成是一种状态冲突，不是错误
+ * - 区分"应用拒绝"（409）和"系统错误"（500）
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -70,6 +70,26 @@ export async function POST(request: NextRequest) {
         { error: 'Action already completed' },
         { status: 409 }
       )
+    }
+
+    // 【每日唯一行动约束】检查今天是否已经完成过其他行动
+    const today = new Date().toISOString().split('T')[0]
+    const { data: todayExecutions } = await supabase
+      .from('daily_executions')
+      .select('action_id')
+      .eq('user_id', user.id)
+      .eq('date', today)
+      .eq('completed', true)
+
+    // 如果今天已经完成过其他行动（不是当前这个行动），拒绝完成
+    if (todayExecutions && todayExecutions.length > 0) {
+      const hasOtherCompletedToday = todayExecutions.some(e => e.action_id !== actionId)
+      if (hasOtherCompletedToday) {
+        return NextResponse.json(
+          { error: '今日已完成行动，每天只能完成一个行动' },
+          { status: 409 }
+        )
+      }
     }
 
     // 三、调用推进逻辑（保持原有实现）

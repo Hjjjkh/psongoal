@@ -1,22 +1,22 @@
 /**
- * 强裁决型 Goal 创建接口
+ * 目标创建接口
  * 
- * 设计原则：
- * 1. Goal 创建受系统裁决控制，不是简单的 CRUD 操作
- * 2. 如果系统中存在"当前 Goal 正在进行中"，拒绝创建新 Goal
- * 3. completed_at is the single source of truth for advancement.
- * 4. Frontend state is not trusted. All decisions happen on the server.
+ * 约束规则（仅用于当前目标执行应用）：
+ * 1. 目标创建受执行状态裁决控制，不是简单的 CRUD 操作
+ * 2. 如果当前目标正在执行中，拒绝创建新目标
+ * 3. completed_at 是推进的唯一真相源
+ * 4. 前端状态不可信，所有判断由后端完成
  * 5. 所有推进状态判断由后端完成，前端无需依赖状态
  * 
- * 为什么要校验当前 Goal：
- * - 系统设计为"每日唯一行动"，同时只能有一个 Goal 在执行
- * - 如果当前 Goal 未完成（status != 'completed'），系统不允许创建新 Goal
- * - 这是系统级的约束，确保用户专注于当前目标
+ * 为什么要校验当前目标：
+ * - 应用设计为"每日唯一行动"，同时只能有一个目标在执行
+ * - 如果当前目标未完成（status != 'completed'），不允许创建新目标
+ * - 这是应用级的约束，确保用户专注于当前目标
  * 
  * 为什么使用 409 Conflict：
  * - 409 Conflict 表示请求与当前资源状态冲突
- * - 当前 Goal 正在进行中是一种状态冲突，不是错误
- * - 区分"系统拒绝"（409）和"系统错误"（500）
+ * - 当前目标正在进行中是一种状态冲突，不是错误
+ * - 区分"应用拒绝"（409）和"系统错误"（500）
  * 
  * 为什么前端不能依赖按钮状态：
  * - 前端状态可能不同步，所有判断必须在后端完成
@@ -71,28 +71,26 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 校验 end_date（如果提供）
-    if (end_date) {
-      if (typeof end_date !== 'string') {
-        return NextResponse.json(
-          { error: 'Invalid parameters' },
-          { status: 400 }
-        )
-      }
-      const endDate = new Date(end_date)
-      if (isNaN(endDate.getTime())) {
-        return NextResponse.json(
-          { error: 'Invalid parameters' },
-          { status: 400 }
-        )
-      }
-      // 校验结束日期不能早于开始日期
-      if (endDate < startDate) {
-        return NextResponse.json(
-          { error: 'Invalid parameters' },
-          { status: 400 }
-        )
-      }
+    // 校验 end_date（必填）
+    if (!end_date || typeof end_date !== 'string') {
+      return NextResponse.json(
+        { error: '结束日期是必填项' },
+        { status: 400 }
+      )
+    }
+    const endDate = new Date(end_date)
+    if (isNaN(endDate.getTime())) {
+      return NextResponse.json(
+        { error: '结束日期格式无效' },
+        { status: 400 }
+      )
+    }
+    // 校验结束日期不能早于开始日期
+    if (endDate < startDate) {
+      return NextResponse.json(
+        { error: '结束日期不能早于开始日期' },
+        { status: 400 }
+      )
     }
 
     // 二、系统裁决逻辑：检查当前 Goal 是否正在进行中
@@ -111,7 +109,7 @@ export async function POST(request: NextRequest) {
         // 【核心约束】如果当前 Goal 未完成（status != 'completed'），拒绝创建新 Goal
         if (currentGoal.status !== 'completed') {
           return NextResponse.json(
-            { error: 'Cannot create new goal while current goal is in progress' },
+            { error: '当前目标正在进行中，请先完成或放弃当前目标后再创建新目标' },
             { status: 409 }
           )
         }
@@ -126,7 +124,7 @@ export async function POST(request: NextRequest) {
         name,
         category,
         start_date,
-        end_date: end_date || null,
+        end_date,
       })
       .select()
       .single()
@@ -135,7 +133,7 @@ export async function POST(request: NextRequest) {
       // 数据库唯一约束冲突或系统拒绝 → 返回 409 Conflict
       if (error.code === '23505' || error.code === 'PGRST116') {
         return NextResponse.json(
-          { error: 'Cannot create new goal while current goal is in progress' },
+          { error: '当前目标正在进行中，请先完成或放弃当前目标后再创建新目标' },
           { status: 409 }
         )
       }

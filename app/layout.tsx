@@ -3,6 +3,7 @@ import type { Metadata } from "next"
 import { Inter } from "next/font/google"
 import { Toaster } from "sonner"
 import { ErrorBoundary } from "@/components/error-boundary"
+import Navigation from "@/components/navigation"
 import "./globals.css"
 
 const inter = Inter({ subsets: ["latin"] })
@@ -21,6 +22,7 @@ export default function RootLayout({
     <html lang="zh-CN">
       <body className={inter.className}>
         <ErrorBoundary>
+          <Navigation />
           {children}
         </ErrorBoundary>
         <Toaster position="top-center" richColors />

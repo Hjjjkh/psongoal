@@ -1,16 +1,17 @@
 /**
- * 强裁决型创建 Action 接口
+ * 行动创建接口
  * 
- * 设计原则：
- * 1. This API is a system-level adjudicator. Frontend state is not trusted.
+ * 约束规则（仅用于当前目标执行应用）：
+ * 1. 这是应用级的裁决接口，前端状态不可信
  * 2. 严格参数校验，确保所有必需字段类型正确
- * 3. 查询 completed_at 并短路拒绝（虽然创建时不应有 completed_at，但作为防御性编程）
+ * 3. 检查 completed_at 参数（创建时不应有此参数）
  * 4. 返回一致的 400 / 409 / 500 状态码
  * 5. 保证与 complete-action、mark-incomplete 保持一致的处理风格
  */
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { getSystemState } from '@/lib/system-state'
 
 export async function POST(request: NextRequest) {
   try {
@@ -78,8 +79,31 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 三、防御性编程：检查是否已有 completed_at（虽然创建时不应有，但作为防御）
-    // 注意：创建接口不应该接收 completed_at 参数，这里只是额外的安全检查
+    // 三、系统裁决逻辑：检查当前 Goal 是否正在进行中
+    // 如果当前目标正在进行中，不允许创建新行动
+    const systemState = await getSystemState(user.id)
+    
+    if (systemState?.current_goal_id) {
+      // 查询当前 Goal 的状态
+      const { data: currentGoal, error: currentGoalError } = await supabase
+        .from('goals')
+        .select('status')
+        .eq('id', systemState.current_goal_id)
+        .eq('user_id', user.id)
+        .single()
+
+      if (!currentGoalError && currentGoal) {
+        // 【核心约束】如果当前 Goal 未完成（status != 'completed'），拒绝创建 Action
+        if (currentGoal.status !== 'completed') {
+          return NextResponse.json(
+            { error: '当前目标正在进行中，无法创建新行动，请先完成或放弃当前目标' },
+            { status: 409 }
+          )
+        }
+      }
+    }
+
+    // 四、检查 completed_at 参数（创建时不应有此参数）
     if (body.completed_at !== undefined && body.completed_at !== null) {
       return NextResponse.json(
         { error: 'Cannot create action with completed_at' },
@@ -87,7 +111,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 四、获取当前 phase 的最大 order_index
+    // 五、获取当前 phase 的最大 order_index
     const { data: existingActions } = await supabase
       .from('actions')
       .select('order_index')
@@ -99,7 +123,7 @@ export async function POST(request: NextRequest) {
       ? existingActions[0].order_index + 1
       : 1
 
-    // 五、创建 Action（completed_at 默认为 null，这是创建接口，不应有 completed_at）
+    // 六、创建 Action（completed_at 默认为 null，这是创建接口，不应有 completed_at）
     const { data, error } = await supabase
       .from('actions')
       .insert({

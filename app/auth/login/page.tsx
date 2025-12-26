@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -23,7 +23,7 @@ function validatePassword(password: string): { valid: boolean; message?: string 
   return { valid: true }
 }
 
-export default function LoginPage() {
+function LoginForm() {
   const searchParams = useSearchParams()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -60,7 +60,26 @@ export default function LoginPage() {
           throw error
         }
         console.log('Sign up success:', data)
-        toast.success('注册成功！请检查邮箱验证链接')
+        // 检查是否需要邮箱验证
+        if (data.user && !data.session) {
+          // 需要邮箱验证
+          toast.success('注册成功！', {
+            description: '请检查邮箱并点击验证链接，验证后即可登录',
+            duration: 5000,
+          })
+        } else if (data.session) {
+          // 不需要验证，可以直接登录
+          toast.success('注册成功！', {
+            description: '账户已创建，正在跳转...',
+            duration: 2000,
+          })
+          // 直接跳转
+          const redirectTo = searchParams.get('redirectedFrom') || '/today'
+          window.location.href = redirectTo
+          return
+        } else {
+          toast.success('注册成功！请检查邮箱验证链接')
+        }
         // 注册成功后自动切换到登录模式
         setIsSignUp(false)
         setEmail('')
@@ -170,6 +189,22 @@ export default function LoginPage() {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center p-4 bg-background">
+        <Card className="w-full max-w-md">
+          <CardContent className="pt-6">
+            <div className="text-center">加载中...</div>
+          </CardContent>
+        </Card>
+      </div>
+    }>
+      <LoginForm />
+    </Suspense>
   )
 }
 
