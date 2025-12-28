@@ -35,6 +35,30 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# 临时文档和分析文件（开发过程中的文档，不需要提交到仓库）
+*_ANALYSIS.md
+*_REVIEW.md
+*_SUMMARY.md
+*_COMPLETE.md
+*_REPORT.md
+*_CHECKLIST.md
+*_READY.md
+*_GUIDE.md
+*_TROUBLESHOOTING.md
+*_IMPROVEMENTS.md
+*_REMAINING_TASKS.md
+*_DESIGN_PRINCIPLES.md
+*_RATIONALE*.md
+*_THINKING*.md
+*_INTEGRATION*.md
+*_FEATURE*.md
+*_TEMPLATE*.md
+*_OPTIMIZATION*.md
+*_AUDIT.md
+*_FIXES.md
+*_ISSUES*.md
+产品定位与功能缺陷分析.md
+
 # cursor
 .cursor/
 tasks.json

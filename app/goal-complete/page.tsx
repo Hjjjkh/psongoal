@@ -1,6 +1,8 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { getSystemState } from '@/lib/system-state'
+import { calculateConsecutiveDays } from '@/lib/utils/stats'
+import { MAX_CONSECUTIVE_DAYS_QUERY } from '@/lib/constants/review'
 import GoalCelebrationView from '@/components/goal-celebration-view'
 
 /**
@@ -59,54 +61,50 @@ export default async function GoalCompletePage() {
     }
   }
 
+  // 获取目标的所有执行记录（用于统计）
+  const phaseIds = phases?.map(p => p.id) || []
+  let allActionIds: string[] = []
+  if (phaseIds.length > 0) {
+    const { data: allActions } = await supabase
+      .from('actions')
+      .select('id')
+      .in('phase_id', phaseIds)
+    allActionIds = allActions?.map(a => a.id) || []
+  }
+
+  // 获取目标的所有完成记录
+  const { data: goalExecutions } = allActionIds.length > 0
+    ? await supabase
+        .from('daily_executions')
+        .select('date, completed, difficulty, energy')
+        .eq('user_id', user.id)
+        .eq('completed', true)
+        .in('action_id', allActionIds)
+        .order('date', { ascending: true })
+    : { data: [] }
+
+  // 计算平均难度和精力
+  const completedExecutions = goalExecutions?.filter(e => e.completed && e.difficulty !== null && e.energy !== null) || []
+  const avgDifficulty = completedExecutions.length > 0
+    ? completedExecutions.reduce((sum, e) => sum + (e.difficulty || 0), 0) / completedExecutions.length
+    : null
+  const avgEnergy = completedExecutions.length > 0
+    ? completedExecutions.reduce((sum, e) => sum + (e.energy || 0), 0) / completedExecutions.length
+    : null
+
   // 获取连续完成天数（跨目标）
+  // 优化：限制查询范围，最多查询365天，提高性能
+  // 优化：使用统一的工具函数计算连续天数
   const { data: allExecutions } = await supabase
     .from('daily_executions')
     .select('date, completed')
     .eq('user_id', user.id)
     .eq('completed', true)
     .order('date', { ascending: false })
+    .limit(MAX_CONSECUTIVE_DAYS_QUERY) // 最多查询指定天数的数据，足够计算连续完成天数
 
-  let consecutiveDays = 0
-  if (allExecutions && allExecutions.length > 0) {
-    // 按日期去重，获取所有有完成记录的日期（每天只应该有一条完成记录）
-    const dateMap: Record<string, boolean> = {}
-    for (const e of allExecutions) {
-      if (e.completed === true && e.date && typeof e.date === 'string') {
-        dateMap[e.date] = true
-      }
-    }
-    
-    // 获取所有日期并排序（从新到旧）
-    const sortedDates = Object.keys(dateMap).sort().reverse()
-    
-    if (sortedDates.length > 0) {
-      const todayForConsecutive = new Date()
-      todayForConsecutive.setHours(0, 0, 0, 0)
-      const todayStrForConsecutive = todayForConsecutive.toISOString().split('T')[0]
-      
-      // 检查今天是否有完成记录
-      const todayHasCompletion = dateMap[todayStrForConsecutive] === true
-      
-      // 从今天或昨天开始计算（如果今天没有完成，从昨天开始）
-      let checkDate = new Date(todayForConsecutive)
-      if (!todayHasCompletion) {
-        checkDate.setDate(checkDate.getDate() - 1)
-      }
-      
-      // 连续往前检查，直到找到没有完成记录的一天
-      for (let i = 0; i < 365; i++) {
-        const dateStr = checkDate.toISOString().split('T')[0]
-        
-        if (dateMap[dateStr] === true) {
-          consecutiveDays++
-          checkDate.setDate(checkDate.getDate() - 1)
-        } else {
-          break
-        }
-      }
-    }
-  }
+  // 使用统一的工具函数计算连续天数
+  const consecutiveDays = calculateConsecutiveDays(allExecutions || [])
 
   return (
     <GoalCelebrationView
@@ -116,6 +114,9 @@ export default async function GoalCompletePage() {
       startDate={goal.start_date}
       endDate={goal.end_date}
       consecutiveDays={consecutiveDays}
+      avgDifficulty={avgDifficulty}
+      avgEnergy={avgEnergy}
+      executionDates={goalExecutions?.map(e => e.date).filter((d): d is string => typeof d === 'string') || []}
     />
   )
 }

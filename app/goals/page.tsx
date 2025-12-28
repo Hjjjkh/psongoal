@@ -1,6 +1,13 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import GoalsView from '@/components/goals-view'
+import dynamic from 'next/dynamic'
+
+import LoadingSpinner from '@/components/loading-spinner'
+
+// 动态导入 GoalsView，优化初始加载
+const GoalsView = dynamic(() => import('@/components/goals-view'), {
+  loading: () => <LoadingSpinner message="加载目标数据..." />,
+})
 
 export default async function GoalsPage() {
   const supabase = await createClient()
@@ -22,30 +29,61 @@ export default async function GoalsPage() {
     .eq('user_id', user.id)
     .order('created_at', { ascending: false })
 
-  // 获取每个 Goal 的 Phases 和 Actions
-  const goalsWithDetails = await Promise.all(
-    (goals || []).map(async (goal) => {
-      const { data: phases } = await supabase
-        .from('phases')
+  if (!goals || goals.length === 0) {
+    return <GoalsView goals={[]} />
+  }
+
+  // 优化：批量获取所有 phases 和 actions，减少查询次数
+  const goalIds = goals.map(g => g.id)
+  
+  // 先获取所有 phases
+  const { data: allPhases } = await supabase
+    .from('phases')
+    .select('*')
+    .in('goal_id', goalIds)
+    .order('order_index', { ascending: true })
+
+  const phases = allPhases || []
+  const phaseIds = phases.map(p => p.id)
+
+  // 批量获取所有 actions（如果有 phases）
+  const { data: allActions } = phaseIds.length > 0
+    ? await supabase
+        .from('actions')
         .select('*')
-        .eq('goal_id', goal.id)
+        .in('phase_id', phaseIds)
         .order('order_index', { ascending: true })
+    : { data: [] }
 
-      const phasesWithActions = await Promise.all(
-        (phases || []).map(async (phase) => {
-          const { data: actions } = await supabase
-            .from('actions')
-            .select('*')
-            .eq('phase_id', phase.id)
-            .order('order_index', { ascending: true })
+  const actions = allActions || []
 
-          return { ...phase, actions: actions || [] }
-        })
-      )
+  // 在内存中组织数据，避免嵌套查询
+  const phasesByGoal = new Map<string, typeof phases>()
+  const actionsByPhase = new Map<string, typeof actions>()
 
-      return { ...goal, phases: phasesWithActions }
-    })
-  )
+  phases.forEach(phase => {
+    if (!phasesByGoal.has(phase.goal_id)) {
+      phasesByGoal.set(phase.goal_id, [])
+    }
+    phasesByGoal.get(phase.goal_id)!.push(phase)
+  })
+
+  actions.forEach(action => {
+    if (!actionsByPhase.has(action.phase_id)) {
+      actionsByPhase.set(action.phase_id, [])
+    }
+    actionsByPhase.get(action.phase_id)!.push(action)
+  })
+
+  // 组装数据
+  const goalsWithDetails = goals.map(goal => {
+    const goalPhases = phasesByGoal.get(goal.id) || []
+    const phasesWithActions = goalPhases.map(phase => ({
+      ...phase,
+      actions: actionsByPhase.get(phase.id) || []
+    }))
+    return { ...goal, phases: phasesWithActions }
+  })
 
   return <GoalsView goals={goalsWithDetails || []} />
 }

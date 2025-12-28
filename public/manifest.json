@@ -1,0 +1,14 @@
+{
+  "name": "个人目标执行系统",
+  "short_name": "PES",
+  "description": "将长期目标拆解为可执行路径，每日唯一行动",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#000000",
+  "orientation": "portrait-primary",
+  "icons": [],
+  "categories": ["productivity", "lifestyle"],
+  "screenshots": []
+}
+

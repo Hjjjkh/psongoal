@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      return NextResponse.json({ error: '未授权，请先登录' }, { status: 401 })
     }
 
     const body = await request.json()
@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
       typeof energy !== 'number'
     ) {
       return NextResponse.json(
-        { error: 'Invalid parameters' },
+        { error: '参数无效，请检查输入' },
         { status: 400 }
       )
     }
@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
 
     if (actionError || !action) {
       return NextResponse.json(
-        { error: 'Action not found' },
+        { error: '未找到指定的行动' },
         { status: 404 }
       )
     }
@@ -67,13 +67,15 @@ export async function POST(request: NextRequest) {
     // 不允许进入推进逻辑，即使 completeActionAndAdvance 内部也有校验
     if (action.completed_at) {
       return NextResponse.json(
-        { error: 'Action already completed' },
+        { error: '行动已完成，无法重复完成' },
         { status: 409 }
       )
     }
 
     // 【每日唯一行动约束】检查今天是否已经完成过其他行动
-    const today = new Date().toISOString().split('T')[0]
+    // 使用统一的日期工具函数，确保时区一致性
+    const { getToday } = await import('@/lib/utils/date')
+    const today = getToday()
     const { data: todayExecutions } = await supabase
       .from('daily_executions')
       .select('action_id')
@@ -86,7 +88,7 @@ export async function POST(request: NextRequest) {
       const hasOtherCompletedToday = todayExecutions.some(e => e.action_id !== actionId)
       if (hasOtherCompletedToday) {
         return NextResponse.json(
-          { error: '今日已完成行动，每天只能完成一个行动' },
+          { error: '今日已完成任务，每天只能完成一个任务' },
           { status: 409 }
         )
       }
@@ -105,7 +107,7 @@ export async function POST(request: NextRequest) {
     // 只有真正异常才返回 500
     if (!result.success) {
       return NextResponse.json(
-        { error: 'System rejected completion' },
+        { error: '系统拒绝了完成请求，可能是并发操作或已完成' },
         { status: 409 }
       )
     }
@@ -120,7 +122,7 @@ export async function POST(request: NextRequest) {
     // 只有真正异常才返回 500
     console.error('Error in complete-action API:', error)
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: '服务器内部错误，请稍后重试' },
       { status: 500 }
     )
   }

@@ -35,7 +35,10 @@ export async function middleware(request: NextRequest) {
   // 只保护受保护的路由，未登录时重定向到登录页
   const isProtected = request.nextUrl.pathname.startsWith('/today') ||
                       request.nextUrl.pathname.startsWith('/dashboard') ||
-                      request.nextUrl.pathname.startsWith('/goals')
+                      request.nextUrl.pathname.startsWith('/goals') ||
+                      request.nextUrl.pathname.startsWith('/focus') ||
+                      request.nextUrl.pathname.startsWith('/settings') ||
+                      request.nextUrl.pathname.startsWith('/templates')
 
   if (!user && isProtected) {
     const loginUrl = request.nextUrl.clone()

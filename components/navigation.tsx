@@ -3,7 +3,7 @@
 import { usePathname } from 'next/navigation'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { Home, Target, BarChart3, Menu, X } from 'lucide-react'
+import { Home, Target, BarChart3, Settings, Menu, X, BookOpen, Timer } from 'lucide-react'
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
 
@@ -14,8 +14,11 @@ export default function Navigation() {
 
   const navItems = [
     { path: '/today', label: '今日', icon: Home },
+    { path: '/focus', label: '专注空间', icon: Timer },
     { path: '/goals', label: '规划', icon: Target },
     { path: '/dashboard', label: '复盘', icon: BarChart3 },
+    { path: '/templates', label: '模板库', icon: BookOpen },
+    { path: '/settings', label: '设置', icon: Settings },
   ]
 
   const handleNavigate = (path: string) => {

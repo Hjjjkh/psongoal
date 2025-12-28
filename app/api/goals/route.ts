@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 校验 category 必须是有效值
-    if (!['health', 'learning', 'project'].includes(category)) {
+    if (!['health', 'learning', 'project', 'custom'].includes(category)) {
       return NextResponse.json(
         { error: 'Invalid parameters' },
         { status: 400 }

@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation"
 import { createClient } from '@/lib/supabase/server'
 import { getSystemState } from '@/lib/system-state'
+import { calculateConsecutiveDays } from '@/lib/utils/stats'
 import HomeView from '@/components/home-view'
 
 export default async function Home() {
@@ -31,156 +32,108 @@ export default async function Home() {
   const systemState = await getSystemState(user.id)
   const hasCurrentAction = systemState?.current_action_id !== null
 
-  // 检查当前目标是否已完成
-  let isGoalCompleted = false
-  if (systemState?.current_goal_id) {
-    const { data: currentGoalCheck } = await supabase
-      .from('goals')
-      .select('status')
-      .eq('id', systemState.current_goal_id)
-      .eq('user_id', user.id)
-      .single()
-    
-    isGoalCompleted = currentGoalCheck?.status === 'completed'
-  }
-
-  // 检查今天是否已完成（只检查当前目标的行动）
+  // 优化：合并查询以减少数据库往返
   const today = new Date().toISOString().split('T')[0]
+  let isGoalCompleted = false
   let todayCompleted = false
-  
-  if (systemState?.current_goal_id && !isGoalCompleted) {
-    // 获取当前目标的所有行动ID
-    const { data: goalPhases } = await supabase
-      .from('phases')
-      .select('id')
-      .eq('goal_id', systemState.current_goal_id)
-    
-    if (goalPhases && goalPhases.length > 0) {
-      const phaseIds = goalPhases.map(p => p.id)
-      const { data: goalActions } = await supabase
-        .from('actions')
-        .select('id')
-        .in('phase_id', phaseIds)
-      
-      if (goalActions && goalActions.length > 0) {
-        const actionIds = goalActions.map(a => a.id)
-        const { data: todayExecution } = await supabase
-          .from('daily_executions')
-          .select('completed')
-          .eq('user_id', user.id)
-          .eq('date', today)
-          .eq('completed', true)
-          .in('action_id', actionIds)
-          .limit(1)
-        
-        todayCompleted = !!(todayExecution && todayExecution.length > 0)
-      }
-    }
-  }
-
-  // 获取当前行动和目标信息（用于首页显示）
   let currentAction = null
   let currentGoal = null
   let goalProgress = null
 
-  if (systemState?.current_action_id && !isGoalCompleted) {
-    const { data: actionData } = await supabase
-      .from('actions')
-      .select(`
-        *,
-        phases!inner(
-          *,
-          goals!inner(*)
-        )
-      `)
-      .eq('id', systemState.current_action_id)
+  if (systemState?.current_goal_id) {
+    // 一次性获取当前目标的状态和基本信息
+    const { data: currentGoalData } = await supabase
+      .from('goals')
+      .select('id, name, status, category, start_date, end_date')
+      .eq('id', systemState.current_goal_id)
+      .eq('user_id', user.id)
       .single()
+    
+    if (currentGoalData) {
+      isGoalCompleted = currentGoalData.status === 'completed'
+      currentGoal = currentGoalData
 
-    if (actionData) {
-      currentAction = {
-        id: actionData.id,
-        title: actionData.title,
-        definition: actionData.definition,
-        estimated_time: actionData.estimated_time,
-      }
-      currentGoal = actionData.phases.goals
-
-      // 计算目标进度
-      const { data: phases } = await supabase
-        .from('phases')
-        .select('id')
-        .eq('goal_id', currentGoal.id)
-
-      if (phases && phases.length > 0) {
-        const phaseIds = phases.map(p => p.id)
-        const { data: allActions } = await supabase
+      // 如果目标未完成，获取行动和完成状态
+      if (!isGoalCompleted && systemState?.current_action_id) {
+        // 一次性获取当前行动和目标进度
+        const { data: actionData } = await supabase
           .from('actions')
-          .select('id, completed_at')
-          .in('phase_id', phaseIds)
+          .select(`
+            id,
+            title,
+            definition,
+            estimated_time,
+            completed_at,
+            phases!inner(
+              id,
+              goals!inner(id)
+            )
+          `)
+          .eq('id', systemState.current_action_id)
+          .single()
 
-        if (allActions) {
-          const totalActions = allActions.length
-          const completedActions = allActions.filter(a => a.completed_at).length
-          goalProgress = {
-            total: totalActions,
-            completed: completedActions,
-            percentage: totalActions > 0 ? Math.round((completedActions / totalActions) * 100) : 0,
+        if (actionData) {
+          currentAction = {
+            id: actionData.id,
+            title: actionData.title,
+            definition: actionData.definition,
+            estimated_time: actionData.estimated_time,
+          }
+
+          // 获取所有阶段和行动以计算进度
+          const { data: phases } = await supabase
+            .from('phases')
+            .select('id')
+            .eq('goal_id', currentGoal.id)
+
+          if (phases && phases.length > 0) {
+            const phaseIds = phases.map(p => p.id)
+            const { data: allActions } = await supabase
+              .from('actions')
+              .select('id, completed_at')
+              .in('phase_id', phaseIds)
+
+            if (allActions) {
+              const totalActions = allActions.length
+              const completedActions = allActions.filter(a => a.completed_at).length
+              goalProgress = {
+                total: totalActions,
+                completed: completedActions,
+                percentage: totalActions > 0 ? Math.round((completedActions / totalActions) * 100) : 0,
+              }
+
+              // 检查今天是否已完成（使用已获取的行动ID）
+              const actionIds = allActions.map(a => a.id)
+              const { data: todayExecution } = await supabase
+                .from('daily_executions')
+                .select('completed')
+                .eq('user_id', user.id)
+                .eq('date', today)
+                .eq('completed', true)
+                .in('action_id', actionIds)
+                .limit(1)
+              
+              todayCompleted = !!(todayExecution && todayExecution.length > 0)
+            }
           }
         }
       }
     }
   }
 
-  // 获取连续完成天数
+  // 获取连续完成天数（使用统一的统计函数）
   const { data: allExecutions } = await supabase
     .from('daily_executions')
     .select('date, completed')
     .eq('user_id', user.id)
     .eq('completed', true)
     .order('date', { ascending: false })
+    .limit(365) // 最多查询365天的数据，足够计算连续完成天数
 
-  let consecutiveDays = 0
-  if (allExecutions && allExecutions.length > 0) {
-    // 按日期去重，获取所有有完成记录的日期（每天只应该有一条完成记录）
-    const dateMap: Record<string, boolean> = {}
-    for (const e of allExecutions) {
-      if (e.completed === true && e.date && typeof e.date === 'string') {
-        dateMap[e.date] = true
-      }
-    }
-    
-    // 获取所有日期并排序（从新到旧）
-    const sortedDates = Object.keys(dateMap).sort().reverse()
-    
-    if (sortedDates.length > 0) {
-      const todayForConsecutive = new Date()
-      todayForConsecutive.setHours(0, 0, 0, 0)
-      const todayStrForConsecutive = todayForConsecutive.toISOString().split('T')[0]
-      
-      // 检查今天是否有完成记录
-      const todayHasCompletion = dateMap[todayStrForConsecutive] === true
-      
-      // 从今天或昨天开始计算（如果今天没有完成，从昨天开始）
-      let checkDate = new Date(todayForConsecutive)
-      if (!todayHasCompletion) {
-        checkDate.setDate(checkDate.getDate() - 1)
-      }
-      
-      // 连续往前检查，直到找到没有完成记录的一天
-      for (let i = 0; i < 365; i++) {
-        const dateStr = checkDate.toISOString().split('T')[0]
-        
-        if (dateMap[dateStr] === true) {
-          consecutiveDays++
-          checkDate.setDate(checkDate.getDate() - 1)
-        } else {
-          break
-        }
-      }
-    }
-  }
+  const consecutiveDays = calculateConsecutiveDays(allExecutions || [])
 
   return (
+    <div>
     <HomeView
       hasCurrentAction={hasCurrentAction && !isGoalCompleted}
       todayCompleted={todayCompleted}
@@ -190,6 +143,7 @@ export default async function Home() {
       consecutiveDays={consecutiveDays}
       isGoalCompleted={isGoalCompleted}
     />
+    </div>
   )
 }
 

@@ -4,8 +4,9 @@ import { useEffect, useState } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { useRouter } from 'next/navigation'
-import { Trophy, Sparkles, Target, Calendar, CheckCircle2 } from 'lucide-react'
+import { Trophy, Sparkles, Target, Calendar, CheckCircle2, TrendingUp, Zap } from 'lucide-react'
 import type { Goal } from '@/lib/types'
+import { sendGoalCompletionReminder } from '@/lib/reminder-manager'
 
 interface GoalCelebrationViewProps {
   goal: Goal
@@ -14,6 +15,9 @@ interface GoalCelebrationViewProps {
   startDate: string
   endDate: string
   consecutiveDays: number
+  avgDifficulty?: number | null
+  avgEnergy?: number | null
+  executionDates?: string[]
 }
 
 /**
@@ -27,6 +31,9 @@ export default function GoalCelebrationView({
   startDate,
   endDate,
   consecutiveDays,
+  avgDifficulty,
+  avgEnergy,
+  executionDates = [],
 }: GoalCelebrationViewProps) {
   const router = useRouter()
   const [showAnimation, setShowAnimation] = useState(false)
@@ -34,8 +41,14 @@ export default function GoalCelebrationView({
   useEffect(() => {
     // 延迟显示动画，增强视觉冲击
     const timer = setTimeout(() => setShowAnimation(true), 100)
+    
+    // 发送目标完成提醒
+    if (goal?.name) {
+      sendGoalCompletionReminder(goal.name)
+    }
+    
     return () => clearTimeout(timer)
-  }, [])
+  }, [goal])
 
   // 计算完成天数
   const start = new Date(startDate)
@@ -102,6 +115,54 @@ export default function GoalCelebrationView({
                 <div className="text-sm text-muted-foreground">总天数</div>
               </div>
             </div>
+
+            {/* 详细统计 */}
+            {(avgDifficulty !== null || avgEnergy !== null || executionDates.length > 0) && (
+              <div className={`mt-8 space-y-4 transition-all duration-1000 delay-500 ${showAnimation ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
+                <h3 className="text-xl font-semibold text-center">执行总结</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {avgDifficulty !== null && (
+                    <Card className="bg-muted/50">
+                      <CardContent className="p-4">
+                        <div className="flex items-center justify-center mb-2">
+                          <TrendingUp className="w-5 h-5 text-orange-500" />
+                        </div>
+                        <div className="text-2xl font-bold text-orange-500 text-center">
+                          {avgDifficulty?.toFixed(1) ?? '-'}
+                        </div>
+                        <div className="text-sm text-muted-foreground text-center">平均难度 (1-5)</div>
+                      </CardContent>
+                    </Card>
+                  )}
+                  {avgEnergy !== null && (
+                    <Card className="bg-muted/50">
+                      <CardContent className="p-4">
+                        <div className="flex items-center justify-center mb-2">
+                          <Zap className="w-5 h-5 text-yellow-500" />
+                        </div>
+                        <div className="text-2xl font-bold text-yellow-500 text-center">
+                          {avgEnergy?.toFixed(1) ?? '-'}
+                        </div>
+                        <div className="text-sm text-muted-foreground text-center">平均精力 (1-5)</div>
+                      </CardContent>
+                    </Card>
+                  )}
+                  {executionDates.length > 0 && (
+                    <Card className="bg-muted/50">
+                      <CardContent className="p-4">
+                        <div className="flex items-center justify-center mb-2">
+                          <CheckCircle2 className="w-5 h-5 text-green-500" />
+                        </div>
+                        <div className="text-2xl font-bold text-green-500 text-center">
+                          {executionDates.length}
+                        </div>
+                        <div className="text-sm text-muted-foreground text-center">完成次数</div>
+                      </CardContent>
+                    </Card>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* 鼓励文案 */}
             <div className={`mt-8 p-6 bg-primary/10 rounded-lg border border-primary/20 transition-all duration-1000 delay-500 ${showAnimation ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>

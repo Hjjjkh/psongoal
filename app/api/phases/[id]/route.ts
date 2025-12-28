@@ -9,7 +9,7 @@ import { getSystemState, updateSystemState } from '@/lib/system-state'
 
 export async function DELETE(
   _request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClient()
@@ -19,7 +19,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const phaseId = params.id
+    const { id: phaseId } = await params
 
     if (!phaseId) {
       return NextResponse.json({ error: 'Invalid phase ID' }, { status: 400 })

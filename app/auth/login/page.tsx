@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, Suspense } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -25,6 +25,7 @@ function validatePassword(password: string): { valid: boolean; message?: string 
 
 function LoginForm() {
   const searchParams = useSearchParams()
+  const router = useRouter()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [isLoading, setIsLoading] = useState(false)
@@ -64,8 +65,8 @@ function LoginForm() {
         if (data.user && !data.session) {
           // 需要邮箱验证
           toast.success('注册成功！', {
-            description: '请检查邮箱并点击验证链接，验证后即可登录',
-            duration: 5000,
+            description: '请检查邮箱（包括垃圾邮件文件夹）并点击验证链接，验证后即可登录',
+            duration: 6000,
           })
         } else if (data.session) {
           // 不需要验证，可以直接登录
@@ -73,12 +74,18 @@ function LoginForm() {
             description: '账户已创建，正在跳转...',
             duration: 2000,
           })
+          // 等待一下确保 cookie 已经设置
+          await new Promise(resolve => setTimeout(resolve, 100))
           // 直接跳转
           const redirectTo = searchParams.get('redirectedFrom') || '/today'
-          window.location.href = redirectTo
+          router.refresh()
+          router.push(redirectTo)
           return
         } else {
-          toast.success('注册成功！请检查邮箱验证链接')
+          toast.success('注册成功！', {
+            description: '请检查邮箱（包括垃圾邮件文件夹）并点击验证链接',
+            duration: 6000,
+          })
         }
         // 注册成功后自动切换到登录模式
         setIsSignUp(false)
@@ -100,11 +107,17 @@ function LoginForm() {
           throw new Error('登录失败：未获取到 session')
         }
         
-        // 登录成功，获取重定向目标（如果有）
+        // 登录成功，等待一下确保 cookie 已经设置
+        await new Promise(resolve => setTimeout(resolve, 100))
+        
+        // 获取重定向目标（如果有）
         const redirectTo = searchParams.get('redirectedFrom') || '/today'
-        // 使用 window.location.href 进行硬刷新跳转
-        // 这会触发完整的 HTTP 请求，让 middleware 重新读取 session cookie
-        window.location.href = redirectTo
+        
+        // 先刷新路由以更新服务器组件状态
+        router.refresh()
+        
+        // 然后跳转到目标页面
+        router.push(redirectTo)
       }
     } catch (error: unknown) {
       console.error('Auth error:', error)

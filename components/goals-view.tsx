@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -9,11 +9,48 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
+import { Checkbox } from '@/components/ui/checkbox'
 import type { Goal, Phase, Action } from '@/lib/types'
-import { Plus, ChevronDown, ChevronRight, Trash2 } from 'lucide-react'
+import { Plus, ChevronDown, ChevronRight, Trash2, ChevronUp, GripVertical, Pause, Play, CheckSquare, Square } from 'lucide-react'
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { toast } from 'sonner'
 import { handleApiResponse, getToday, getTomorrow, getThisWeekStart, getNextWeekStart, getRelativeDate, ensureEndDateAfterStart, renderSimpleMarkdown } from '@/lib/utils'
-import { getTemplate, type TemplateCategory } from '@/lib/templates'
+// 已废弃：不再使用内置模板，统一使用模板库
+// import { getTemplate, type TemplateCategory } from '@/lib/templates'
+import dynamic from 'next/dynamic'
+import OnboardingGuide from '@/components/onboarding-guide'
+
+// 动态导入大型组件，减少初始加载时间
+const ActionTemplateSelector = dynamic(() => import('@/components/action-template-selector'), {
+  loading: () => <div className="flex items-center justify-center p-4">加载中...</div>,
+  ssr: false,
+})
+
+const GoalTemplateSelector = dynamic(() => import('@/components/goal-template-selector'), {
+  loading: () => <div className="flex items-center justify-center p-4">加载中...</div>,
+  ssr: false,
+})
+
+const TemplateEditor = dynamic(() => import('@/components/template-editor'), {
+  loading: () => <div className="flex items-center justify-center p-4">加载中...</div>,
+  ssr: false,
+})
 
 interface GoalWithDetails extends Goal {
   phases: (Phase & { actions: Action[] })[]
@@ -21,6 +58,190 @@ interface GoalWithDetails extends Goal {
 
 interface GoalsViewProps {
   goals: GoalWithDetails[]
+}
+
+// 可拖拽的阶段组件
+function SortablePhaseItem({
+  phase,
+  goalId,
+  isPhaseSelected,
+  isPhaseExpanded,
+  isBatchSelectMode,
+  isDev,
+  onTogglePhase,
+  onTogglePhaseSelection,
+  onAddAction,
+  onDeletePhase,
+  onDragEnd,
+}: {
+  phase: Phase & { actions: Action[] }
+  goalId: string
+  isPhaseSelected: boolean
+  isPhaseExpanded: boolean
+  isBatchSelectMode: boolean
+  isDev: boolean
+  onTogglePhase: (id: string) => void
+  onTogglePhaseSelection: (id: string) => void
+  onAddAction: () => void
+  onDeletePhase: (id: string) => void
+  onDragEnd: (event: DragEndEvent, goalId: string) => void
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: phase.id })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  }
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`border-l-2 pl-4 space-y-2 ${isPhaseSelected ? 'bg-primary/5 rounded-lg p-2' : ''}`}
+    >
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          {isBatchSelectMode && isDev && (
+            <Checkbox
+              checked={isPhaseSelected}
+              onCheckedChange={() => onTogglePhaseSelection(phase.id)}
+              className="flex-shrink-0"
+            />
+          )}
+          <button
+            onClick={() => onTogglePhase(phase.id)}
+            className="p-1 hover:bg-muted rounded"
+            disabled={isBatchSelectMode}
+          >
+            {isPhaseExpanded ? (
+              <ChevronDown className="w-4 h-4" />
+            ) : (
+              <ChevronRight className="w-4 h-4" />
+            )}
+          </button>
+          <div className="flex items-center gap-2 flex-1">
+            <GripVertical
+              className="w-4 h-4 text-muted-foreground cursor-grab active:cursor-grabbing"
+              {...attributes}
+              {...listeners}
+            />
+            <h3 className="font-semibold">{phase.name || '未命名阶段'}</h3>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={onAddAction}
+            disabled={isBatchSelectMode}
+          >
+            <Plus className="w-4 h-4 mr-1" />
+            添加行动
+          </Button>
+          {isDev && !isBatchSelectMode && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => onDeletePhase(phase.id)}
+              className="text-muted-foreground hover:text-destructive"
+            >
+              <Trash2 className="w-3 h-3" />
+            </Button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// 可拖拽的行动组件
+function SortableActionItem({
+  action,
+  phaseId,
+  isActionSelected,
+  isBatchSelectMode,
+  isDev,
+  onToggleActionSelection,
+  onDeleteAction,
+  onDragEnd,
+}: {
+  action: Action
+  phaseId: string
+  isActionSelected: boolean
+  isBatchSelectMode: boolean
+  isDev: boolean
+  onToggleActionSelection: (id: string) => void
+  onDeleteAction: (id: string) => void
+  onDragEnd: (event: DragEndEvent, phaseId: string) => void
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: action.id })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  }
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`bg-muted p-3 rounded flex items-start justify-between gap-2 ${isActionSelected ? 'ring-2 ring-primary' : ''}`}
+    >
+      <div className="flex items-center gap-2 flex-1">
+        {isBatchSelectMode && isDev && (
+          <Checkbox
+            checked={isActionSelected}
+            onCheckedChange={() => onToggleActionSelection(action.id)}
+            className="flex-shrink-0"
+          />
+        )}
+        <GripVertical
+          className="w-4 h-4 text-muted-foreground cursor-grab active:cursor-grabbing flex-shrink-0"
+          {...attributes}
+          {...listeners}
+        />
+        <div className="flex-1">
+          <div className="flex items-center gap-2">
+            <p className="font-medium text-sm">{action.title || '未命名行动'}</p>
+            {action.completed_at && (
+              <span className="text-xs bg-green-100 dark:bg-green-900/20 text-green-800 dark:text-green-200 px-2 py-0.5 rounded">
+                已完成
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-muted-foreground mt-1">
+            {action.definition || '完成标准未设置'}
+          </p>
+        </div>
+      </div>
+      {isDev && !isBatchSelectMode && (
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => onDeleteAction(action.id)}
+          className="text-muted-foreground hover:text-destructive shrink-0"
+        >
+          <Trash2 className="w-3 h-3" />
+        </Button>
+      )}
+    </div>
+  )
 }
 
 export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
@@ -32,18 +253,94 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
   // Goal 创建对话框
   const [isGoalDialogOpen, setIsGoalDialogOpen] = useState(false)
   const [goalName, setGoalName] = useState('')
-  const [goalCategory, setGoalCategory] = useState<'health' | 'learning' | 'project'>('health')
+  const [goalCategory, setGoalCategory] = useState<'health' | 'learning' | 'project' | 'custom'>('health')
+  const [customCategoryName, setCustomCategoryName] = useState('') // 自定义分类名称
   const [goalStartDate, setGoalStartDate] = useState('')
   const [goalEndDate, setGoalEndDate] = useState('')
   const [isCreatingGoal, setIsCreatingGoal] = useState(false)
   
-  // 模板创建状态
-  const [useTemplate, setUseTemplate] = useState(false)
-  const [templateActionCount, setTemplateActionCount] = useState('7')
+  // 模板创建状态（统一使用模板库）
+  const [useTemplateLibrary, setUseTemplateLibrary] = useState(false) // 是否从模板库选择
+  const [selectedGoalTemplate, setSelectedGoalTemplate] = useState<any>(null) // 选中的目标模板
   const [isPreviewExpanded, setIsPreviewExpanded] = useState(true)
-  const [categoryChanged, setCategoryChanged] = useState(false)
-  // 模板行动编辑状态：存储每个模板行动的编辑内容
+  // 模板行动编辑状态：存储每个模板行动的编辑内容（已废弃，保留用于兼容）
   const [templateActions, setTemplateActions] = useState<Record<number, { titleTemplate: string; definition: string; estimatedTime?: string }>>({})
+  
+  // 新增：目标模板编辑状态（支持多阶段）
+  interface TemplatePhaseEdit {
+    name: string
+    description: string
+    actions: Array<{ title_template: string; definition: string; estimated_time: string; count?: string }>
+  }
+  const [templatePhases, setTemplatePhases] = useState<TemplatePhaseEdit[]>([])
+  
+  // 检查是否有快速创建请求
+  useEffect(() => {
+    const quickCreateTemplate = sessionStorage.getItem('quickCreateTemplate')
+    if (quickCreateTemplate) {
+      try {
+        const template = JSON.parse(quickCreateTemplate)
+        // 设置模板相关状态
+        setUseTemplateLibrary(true)
+        setSelectedGoalTemplate(template)
+        setGoalCategory(template.category || 'health')
+        
+        // 如果模板有自定义分类名称，从描述中提取
+        if (template.category === 'custom' && template.description) {
+          const match = template.description.match(/\[分类:\s*([^\]]+)\]/)
+          if (match && match[1]) {
+            setCustomCategoryName(match[1].trim())
+          } else {
+            setCustomCategoryName('')
+          }
+        } else {
+          setCustomCategoryName('')
+        }
+        
+        // 将模板转换为可编辑格式
+        const templateWithPhases = template as any
+        let phasesToSet: TemplatePhaseEdit[] = []
+        
+        if (templateWithPhases.phases && Array.isArray(templateWithPhases.phases) && templateWithPhases.phases.length > 0) {
+          phasesToSet = templateWithPhases.phases.map((phase: any) => ({
+            name: phase.name || '',
+            description: phase.description || '',
+            actions: (phase.actions || []).map((action: any) => ({
+              title_template: action.title_template || '',
+              definition: action.definition || '',
+              estimated_time: action.estimated_time?.toString() || '',
+              count: action.count?.toString() || '7',
+            })),
+          }))
+        } else {
+          phasesToSet = [{
+            name: template.phase_name || '',
+            description: template.phase_description || '',
+            actions: (template.actions || []).map((action: any) => ({
+              title_template: action.title_template || '',
+              definition: action.definition || '',
+              estimated_time: action.estimated_time?.toString() || '',
+              count: action.count?.toString() || '7',
+            })),
+          }]
+        }
+        
+        setTemplatePhases(phasesToSet)
+        
+        // 打开创建对话框
+        setIsGoalDialogOpen(true)
+        
+        // 清除 sessionStorage
+        sessionStorage.removeItem('quickCreateTemplate')
+        
+        // 清除URL参数
+        router.replace('/goals', { scroll: false })
+      } catch (error) {
+        console.error('Failed to parse quick create template:', error)
+        sessionStorage.removeItem('quickCreateTemplate')
+      }
+    }
+  }, [router])
 
   // Phase 创建对话框
   const [isPhaseDialogOpen, setIsPhaseDialogOpen] = useState(false)
@@ -62,9 +359,27 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
   
   // 批量创建状态
   const [isBatchMode, setIsBatchMode] = useState(false)
+  
+  // 批量操作状态（删除等）
+  const [isBatchSelectMode, setIsBatchSelectMode] = useState(false)
+  const [selectedGoals, setSelectedGoals] = useState<Set<string>>(new Set())
+  const [selectedPhases, setSelectedPhases] = useState<Set<string>>(new Set())
+  const [selectedActions, setSelectedActions] = useState<Set<string>>(new Set())
+  const [isBatchDeleting, setIsBatchDeleting] = useState(false)
+
+  // 拖拽排序传感器
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  )
   const [batchTitleTemplate, setBatchTitleTemplate] = useState('')
   const [batchCount, setBatchCount] = useState('')
   const [isCreatingBatch, setIsCreatingBatch] = useState(false)
+
+  // 行动模板选择状态
+  const [useActionTemplate, setUseActionTemplate] = useState(false)
 
   // 删除确认对话框状态
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
@@ -72,57 +387,130 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [deleteName, setDeleteName] = useState<string>('')
 
-  // 从模板创建目标
-  const handleCreateGoalFromTemplate = async () => {
-    if (!goalName || !goalStartDate) return
+  // 批量创建确认对话框状态
+  const [showBatchConfirmDialog, setShowBatchConfirmDialog] = useState(false)
 
-    // 校验结束日期必填
-    if (!goalEndDate) {
-      toast.error('结束日期是必填项')
+  // 新用户引导状态
+  // 初始状态必须与服务器端一致，避免水合错误
+  const [showOnboarding, setShowOnboarding] = useState(false)
+  const [isClient, setIsClient] = useState(false)
+  
+  // 在客户端安全地检查是否显示引导
+  // 使用 isClient 确保只在客户端执行，避免水合错误
+  useEffect(() => {
+    setIsClient(true)
+    if (initialGoals.length === 0) {
+      const hasSeenOnboarding = localStorage.getItem('hasSeenOnboarding')
+      setShowOnboarding(!hasSeenOnboarding)
+    }
+  }, [initialGoals.length])
+
+  // 已废弃：从内置模板创建目标（已整合到模板库）
+  // 此函数已不再使用，保留用于向后兼容
+
+  // 从模板库创建目标（支持多阶段）
+  const handleCreateGoalFromTemplateLibrary = async () => {
+    // 验证必填项
+    if (!goalName || !goalName.trim()) {
+      toast.error('请填写目标名称', {
+        description: '目标名称是必填项',
+      })
       return
     }
 
-    const parsedCount = templateActionCount ? parseInt(templateActionCount) : NaN
-    const actionCount = (!isNaN(parsedCount) && parsedCount >= 1 && parsedCount <= 100) ? parsedCount : 7
-    if (actionCount < 1 || actionCount > 100) {
-      toast.error('行动数量必须在 1-100 之间')
+    if (!goalStartDate) {
+      toast.error('请选择开始日期', {
+        description: '开始日期是必填项',
+      })
+      return
+    }
+
+    if (!goalEndDate) {
+      toast.error('请选择结束日期', {
+        description: '结束日期是必填项',
+      })
+      return
+    }
+
+    if (!selectedGoalTemplate) {
+      toast.error('请选择一个目标模板', {
+        description: '需要从模板库中选择一个模板',
+      })
+      return
+    }
+
+    // 验证日期逻辑
+    if (goalEndDate < goalStartDate) {
+      toast.error('结束日期不能早于开始日期', {
+        description: '请调整日期设置',
+      })
+      return
+    }
+
+    // 校验阶段和行动
+    if (templatePhases.length === 0) {
+      toast.error('至少需要一个阶段', {
+        description: '请确保模板包含至少一个阶段',
+      })
+      return
+    }
+
+    const hasEmptyPhase = templatePhases.some(phase => !phase.name || phase.actions.length === 0)
+    if (hasEmptyPhase) {
+      toast.error('阶段信息不完整', {
+        description: '每个阶段必须有名称和至少一个行动模板',
+      })
       return
     }
 
     setIsCreatingGoal(true)
     try {
-      // 获取模板，准备编辑后的行动数据
-      const template = getTemplate(goalCategory)
-      const editedActions = template ? template.phase.exampleActions.map((action, idx) => {
-        const edited = templateActions[idx]
-        return edited ? {
-          titleTemplate: edited.titleTemplate,
-          definition: edited.definition,
-          estimatedTime: edited.estimatedTime ? parseInt(edited.estimatedTime) : action.estimatedTime,
-        } : action
-      }) : null
+      // 支持多阶段创建
+      const phases = templatePhases.map((phase) => {
+        const actions = phase.actions.map((action: any) => {
+          // 解析每个行动模板的生成数量
+          const parsedCount = action.count ? parseInt(action.count) : NaN
+          const actionCount = (!isNaN(parsedCount) && parsedCount >= 1 && parsedCount <= 100) ? parsedCount : 7
+          
+          return {
+        titleTemplate: action.title_template,
+        definition: action.definition,
+        estimatedTime: action.estimated_time ? parseInt(action.estimated_time) : null,
+            count: actionCount, // 每个行动模板的生成数量
+          }
+        })
+
+        return {
+          name: phase.name,
+          description: phase.description || null,
+          actions,
+        }
+      })
+
+      // 如果选择了自定义分类且有自定义分类名称，将其添加到第一个阶段的描述中
+      if (goalCategory === 'custom' && customCategoryName.trim() && phases.length > 0) {
+        const categoryTag = `[分类: ${customCategoryName.trim()}]`
+        phases[0].description = phases[0].description 
+          ? `${categoryTag} ${phases[0].description}`
+          : categoryTag
+      }
 
       const response = await fetch('/api/goals/create-from-template', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: goalName,
-          category: goalCategory,
+          category: goalCategory, // 使用用户选择的分类，而不是模板的分类
           start_date: goalStartDate,
           end_date: goalEndDate,
-          actionCount: actionCount,
-          editedActions: editedActions, // 传递编辑后的行动数据
+          phases, // 多阶段支持
         }),
       })
 
       const result = await handleApiResponse<{ success: boolean; data?: { goal: any; phase: any; actions: any[]; actionCount: number } }>(response, '创建失败，请重试')
 
       if (result.success && result.data) {
-        // API返回结构是 { success: true, data: { goal, phase, actions, actionCount } }
-        // handleApiResponse 返回的 data 就是整个响应对象，需要访问 result.data.data
         const responseData = result.data.data
-        // 明确获取数量：优先使用 actionCount，其次使用 actions.length，如果都没有则显示数据异常
-        // 注意：避免与函数开头的 actionCount 变量名冲突，使用 createdActionCount
         const createdActionCount = responseData?.actionCount ?? responseData?.actions?.length
         
         if (createdActionCount !== undefined && createdActionCount !== null && createdActionCount > 0) {
@@ -130,14 +518,9 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
             description: '请点击"设为当前目标"开始执行',
             duration: 5000,
           })
-        } else if (createdActionCount === 0) {
+        } else {
           toast.success('目标创建成功，但未生成行动', {
             description: '请先创建行动，然后点击"设为当前目标"',
-            duration: 5000,
-          })
-        } else {
-          toast.success('目标创建成功（行动数量数据异常）', {
-            description: '请检查目标详情，然后点击"设为当前目标"',
             duration: 5000,
           })
         }
@@ -145,23 +528,12 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
         setIsGoalDialogOpen(false)
         setGoalName('')
         setGoalCategory('health')
+        setCustomCategoryName('')
         setGoalStartDate('')
         setGoalEndDate('')
-        setUseTemplate(false)
-        setTemplateActionCount('7')
-        setTemplateActions({}) // 清空编辑的模板行动
-        
-        // 模板创建会返回 phase，检查是否有 phase 和 actions
-        const hasPhase = responseData?.phase !== undefined && responseData?.phase !== null
-        const hasActions = createdActionCount !== undefined && createdActionCount !== null && createdActionCount > 0
-        
-        // 如果模板创建成功但没有生成行动，自动打开行动对话框
-        if (hasPhase && !hasActions && responseData?.phase?.id) {
-          setTimeout(() => {
-            setSelectedPhaseId(responseData.phase.id)
-            setIsActionDialogOpen(true)
-          }, 100)
-        }
+        setUseTemplateLibrary(false)
+        setSelectedGoalTemplate(null)
+        setTemplatePhases([])
       }
     } catch (error) {
       // handleApiResponse 已处理网络错误
@@ -171,22 +543,51 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
   }
 
   const handleCreateGoal = async () => {
-    if (!goalName || !goalStartDate) return
-    
-    // 校验结束日期必填
-    if (!goalEndDate) {
-      toast.error('结束日期是必填项')
+    // 验证必填项
+    if (!goalName || !goalName.trim()) {
+      toast.error('请填写目标名称', {
+        description: '目标名称是必填项',
+      })
       return
     }
 
-    // 如果使用模板，调用模板创建接口
-    if (useTemplate) {
-      await handleCreateGoalFromTemplate()
+    if (!goalStartDate) {
+      toast.error('请选择开始日期', {
+        description: '开始日期是必填项',
+      })
+      return
+    }
+    
+    // 校验结束日期必填
+    if (!goalEndDate) {
+      toast.error('请选择结束日期', {
+        description: '结束日期是必填项',
+      })
+      return
+    }
+
+    // 验证日期逻辑
+    if (goalEndDate < goalStartDate) {
+      toast.error('结束日期不能早于开始日期', {
+        description: '请调整日期设置',
+      })
+      return
+    }
+
+    // 统一使用模板库创建接口
+    if (useTemplateLibrary && selectedGoalTemplate) {
+      await handleCreateGoalFromTemplateLibrary()
       return
     }
 
     setIsCreatingGoal(true)
     try {
+      // 如果选择了自定义分类且有自定义分类名称，将其存储到 sessionStorage
+      // 这样在创建第一个阶段时可以获取并保存到阶段的描述中
+      if (goalCategory === 'custom' && customCategoryName.trim()) {
+        sessionStorage.setItem('pendingCustomCategoryName', customCategoryName.trim())
+      }
+      
       const response = await fetch('/api/goals', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -214,10 +615,10 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
         setIsGoalDialogOpen(false)
         setGoalName('')
         setGoalCategory('health')
+        setCustomCategoryName('')
         setGoalStartDate('')
         setGoalEndDate('')
-        setUseTemplate(false)
-        setTemplateActionCount('7')
+        setUseTemplateLibrary(false)
         
         // 等待页面刷新后，自动打开阶段对话框
         if (goalId) {
@@ -236,17 +637,45 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
   }
 
   const handleCreatePhase = async () => {
-    if (!selectedGoalId || !phaseName) return
+    if (!selectedGoalId) {
+      toast.error('请先选择目标', {
+        description: '需要先选择要添加阶段的目标',
+      })
+      return
+    }
+
+    if (!phaseName || !phaseName.trim()) {
+      toast.error('请填写阶段名称', {
+        description: '阶段名称是必填项',
+      })
+      return
+    }
 
     setIsCreatingPhase(true)
     try {
+      // 检查是否有待保存的自定义分类名称
+      let finalDescription = phaseDescription || ''
+      const pendingCustomCategoryName = sessionStorage.getItem('pendingCustomCategoryName')
+      
+      // 检查目标是否为自定义分类
+      const goal = goals.find(g => g.id === selectedGoalId)
+      if (goal?.category === 'custom' && pendingCustomCategoryName) {
+        // 将自定义分类名称添加到阶段的描述中
+        const categoryTag = `[分类: ${pendingCustomCategoryName}]`
+        finalDescription = finalDescription 
+          ? `${categoryTag} ${finalDescription}`
+          : categoryTag
+        // 清除 sessionStorage，避免重复使用
+        sessionStorage.removeItem('pendingCustomCategoryName')
+      }
+      
       const response = await fetch('/api/phases', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           goal_id: selectedGoalId,
           name: phaseName,
-          description: phaseDescription || null,
+          description: finalDescription || null,
         }),
       })
 
@@ -286,7 +715,34 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
   }
 
   const handleCreateAction = async () => {
-    if (!selectedPhaseId || !actionTitle || !actionDefinition) return
+    if (!selectedPhaseId) {
+      toast.error('请先选择阶段', {
+        description: '需要先选择要添加行动的阶段',
+      })
+      return
+    }
+
+    if (!actionTitle || !actionTitle.trim()) {
+      toast.error('请填写行动标题', {
+        description: '行动标题是必填项',
+      })
+      return
+    }
+
+    if (!actionDefinition || !actionDefinition.trim()) {
+      toast.error('请填写完成标准', {
+        description: '完成标准是必填项，必须是客观可判断的标准',
+      })
+      return
+    }
+
+    // 验证预计时间范围
+    if (actionEstimatedTime && (parseInt(actionEstimatedTime) < 1 || parseInt(actionEstimatedTime) > 1440)) {
+      toast.error('预计时间应在 1-1440 分钟之间', {
+        description: '请调整预计时间',
+      })
+      return
+    }
 
     setIsCreatingAction(true)
     try {
@@ -312,6 +768,7 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
         setActionDefinition('')
         setActionEstimatedTime('')
         setIsBatchMode(false)
+        setUseActionTemplate(false)
       }
       // handleApiResponse 已处理错误提示
     } catch (error) {
@@ -323,11 +780,57 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
 
   // 批量创建行动
   const handleBatchCreateActions = async () => {
-    if (!selectedPhaseId || !batchTitleTemplate || !actionDefinition || !batchCount) return
+    if (!selectedPhaseId || !batchTitleTemplate || !actionDefinition || !batchCount) {
+      toast.error('请填写所有必填项', {
+        description: '标题模板、完成标准和数量都是必填项',
+      })
+      return
+    }
+
+    const count = parseInt(batchCount)
+    if (isNaN(count) || count < 1) {
+      toast.error('数量必须大于 0')
+      return
+    }
+    
+    if (count > 1000) {
+      toast.error('数量不能超过 1000', {
+        description: '为了性能考虑，单次最多创建 1000 个行动',
+      })
+      return
+    }
+
+    // 验证标题模板是否包含 {n} 占位符（可选，但给出提示）
+    if (!batchTitleTemplate.includes('{n}')) {
+      setShowBatchConfirmDialog(true)
+      return
+    }
+
+    handleConfirmBatchCreate()
+  }
+
+  const handleConfirmBatchCreate = async () => {
+    setShowBatchConfirmDialog(false)
+
+    // 重新验证参数（防止对话框关闭后参数被修改）
+    if (!batchCount || !batchCount.trim()) {
+      toast.error('请填写数量')
+      return
+    }
 
     const count = parseInt(batchCount)
     if (isNaN(count) || count < 1 || count > 1000) {
-      toast.error('数量必须在 1-1000 之间')
+      toast.error('数量无效')
+      return
+    }
+
+    if (!batchTitleTemplate || !batchTitleTemplate.trim()) {
+      toast.error('请填写标题模板')
+      return
+    }
+
+    if (!actionDefinition || !actionDefinition.trim()) {
+      toast.error('请填写完成标准')
       return
     }
 
@@ -355,11 +858,18 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
         const createdCount = responseData?.count ?? responseData?.actions?.length
         
         if (createdCount !== undefined && createdCount !== null && createdCount > 0) {
-          toast.success(`成功创建 ${createdCount} 个行动`)
+          toast.success(`成功创建 ${createdCount} 个行动`, {
+            description: '行动已添加到当前阶段',
+            duration: 3000,
+          })
         } else if (createdCount === 0) {
-          toast.success('批量创建成功，但未创建任何行动')
+          toast.warning('批量创建完成，但未创建任何行动', {
+            description: '请检查输入参数',
+          })
         } else {
-          toast.success('批量创建成功（创建数量数据异常）')
+          toast.warning('批量创建完成', {
+            description: '创建数量数据异常，请刷新页面查看',
+          })
         }
         router.refresh()
         setIsActionDialogOpen(false)
@@ -373,13 +883,35 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
       }
       // handleApiResponse 已处理错误提示
     } catch (error) {
+      console.error('Batch create error:', error)
       // handleApiResponse 已处理网络错误
     } finally {
       setIsCreatingBatch(false)
     }
   }
 
-  const handleSetCurrentGoal = async (goalId: string) => {
+  const handleToggleGoalStatus = useCallback(async (goalId: string, currentStatus: string) => {
+    const newStatus = currentStatus === 'paused' ? 'active' : 'paused'
+    
+    try {
+      const response = await fetch(`/api/goals/${goalId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+      })
+
+      const result = await handleApiResponse(response, '操作失败，请重试')
+
+      if (result.success) {
+        toast.success(newStatus === 'paused' ? '目标已暂停' : '目标已恢复')
+        router.refresh()
+      }
+    } catch (error) {
+      // handleApiResponse 已处理错误
+    }
+  }, [router])
+
+  const handleSetCurrentGoal = useCallback(async (goalId: string) => {
     try {
       const response = await fetch('/api/set-current-goal', {
         method: 'POST',
@@ -399,82 +931,105 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
     } catch (error) {
       // handleApiResponse 已处理网络错误
     }
-  }
+  }, [router])
 
-  const toggleGoal = (goalId: string) => {
-    const newSet = new Set(expandedGoals)
+  // 使用 useCallback 优化函数，避免不必要的重新渲染
+  const toggleGoal = useCallback((goalId: string) => {
+    setExpandedGoals(prev => {
+      const newSet = new Set(prev)
     if (newSet.has(goalId)) {
       newSet.delete(goalId)
     } else {
       newSet.add(goalId)
     }
-    setExpandedGoals(newSet)
-  }
+      return newSet
+    })
+  }, [])
 
-  const togglePhase = (phaseId: string) => {
-    const newSet = new Set(expandedPhases)
+  const togglePhase = useCallback((phaseId: string) => {
+    setExpandedPhases(prev => {
+      const newSet = new Set(prev)
     if (newSet.has(phaseId)) {
       newSet.delete(phaseId)
     } else {
       newSet.add(phaseId)
     }
-    setExpandedPhases(newSet)
-  }
+      return newSet
+    })
+  }, [])
 
   // DEV ONLY: 删除功能（测试级删除）
-  const isDev = process.env.NODE_ENV === 'development'
+  // 使用 useState 确保服务器和客户端一致，避免水合错误
+  const [isDev, setIsDev] = useState(false)
+  
+  useEffect(() => {
+    setIsDev(process.env.NODE_ENV === 'development')
+  }, [])
 
-  const handleDeleteGoal = async (goalId: string) => {
+  // 使用 useMemo 缓存查找结果，优化性能
+  const goalMap = useMemo(() => {
+    const map = new Map<string, GoalWithDetails>()
+    goals.forEach(goal => map.set(goal.id, goal))
+    return map
+  }, [goals])
+
+  const phaseMap = useMemo(() => {
+    const map = new Map<string, { phase: Phase & { actions: Action[] }, goalId: string }>()
+    goals.forEach(goal => {
+      goal.phases.forEach(phase => {
+        map.set(phase.id, { phase, goalId: goal.id })
+      })
+    })
+    return map
+  }, [goals])
+
+  const actionMap = useMemo(() => {
+    const map = new Map<string, { action: Action, phaseId: string, goalId: string }>()
+    goals.forEach(goal => {
+      goal.phases.forEach(phase => {
+        phase.actions.forEach(action => {
+          map.set(action.id, { action, phaseId: phase.id, goalId: goal.id })
+        })
+      })
+    })
+    return map
+  }, [goals])
+
+  const handleDeleteGoal = useCallback((goalId: string) => {
     if (!isDev) return
     
-    const goal = goals.find(g => g.id === goalId)
+    const goal = goalMap.get(goalId)
     if (goal) {
       setDeleteType('goal')
       setDeleteId(goalId)
       setDeleteName(goal.name || '未命名目标')
       setDeleteConfirmOpen(true)
     }
-  }
+  }, [isDev, goalMap])
 
-  const handleDeletePhase = async (phaseId: string) => {
+  const handleDeletePhase = useCallback((phaseId: string) => {
     if (!isDev) return
     
-    // 查找阶段名称
-    let phaseName = '未命名阶段'
-    for (const goal of goals) {
-      const phase = goal.phases.find(p => p.id === phaseId)
-      if (phase) {
-        phaseName = phase.name || '未命名阶段'
-        break
-      }
-    }
-    
+    const phaseData = phaseMap.get(phaseId)
+    if (phaseData) {
     setDeleteType('phase')
     setDeleteId(phaseId)
-    setDeleteName(phaseName)
+      setDeleteName(phaseData.phase.name || '未命名阶段')
     setDeleteConfirmOpen(true)
   }
+  }, [isDev, phaseMap])
 
-  const handleDeleteAction = async (actionId: string) => {
+  const handleDeleteAction = useCallback((actionId: string) => {
     if (!isDev) return
     
-    // 查找行动名称
-    let actionName = '未命名行动'
-    for (const goal of goals) {
-      for (const phase of goal.phases) {
-        const action = phase.actions.find(a => a.id === actionId)
-        if (action) {
-          actionName = action.title || '未命名行动'
-          break
-        }
-      }
-    }
-    
+    const actionData = actionMap.get(actionId)
+    if (actionData) {
     setDeleteType('action')
     setDeleteId(actionId)
-    setDeleteName(actionName)
+      setDeleteName(actionData.action.title || '未命名行动')
     setDeleteConfirmOpen(true)
   }
+  }, [isDev, actionMap])
 
   const confirmDelete = async () => {
     if (!deleteId || !deleteType) return
@@ -513,37 +1068,383 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
     }
   }
 
+  // 批量操作函数
+  const toggleBatchSelectMode = useCallback(() => {
+    setIsBatchSelectMode(prev => {
+      if (!prev) {
+        // 进入批量模式时清空选择
+        setSelectedGoals(new Set())
+        setSelectedPhases(new Set())
+        setSelectedActions(new Set())
+      }
+      return !prev
+    })
+  }, [])
+
+  const toggleGoalSelection = useCallback((goalId: string) => {
+    setSelectedGoals(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(goalId)) {
+        newSet.delete(goalId)
+      } else {
+        newSet.add(goalId)
+      }
+      return newSet
+    })
+  }, [])
+
+  const togglePhaseSelection = useCallback((phaseId: string) => {
+    setSelectedPhases(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(phaseId)) {
+        newSet.delete(phaseId)
+      } else {
+        newSet.add(phaseId)
+      }
+      return newSet
+    })
+  }, [])
+
+  const toggleActionSelection = useCallback((actionId: string) => {
+    setSelectedActions(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(actionId)) {
+        newSet.delete(actionId)
+      } else {
+        newSet.add(actionId)
+      }
+      return newSet
+    })
+  }, [])
+
+  const selectAllGoals = useCallback(() => {
+    if (selectedGoals.size === goals.length) {
+      setSelectedGoals(new Set())
+    } else {
+      setSelectedGoals(new Set(goals.map(g => g.id)))
+    }
+  }, [goals, selectedGoals.size])
+
+  const handleBatchDelete = useCallback(async () => {
+    const totalSelected = selectedGoals.size + selectedPhases.size + selectedActions.size
+    if (totalSelected === 0) {
+      toast.error('请先选择要删除的项目')
+      return
+    }
+
+    // 使用 Dialog 确认（但这里先用简单的 confirm，后续可以优化为 Dialog）
+    const confirmed = window.confirm(
+      `确定要删除选中的 ${totalSelected} 个项目吗？\n` +
+      (selectedGoals.size > 0 ? `- ${selectedGoals.size} 个目标\n` : '') +
+      (selectedPhases.size > 0 ? `- ${selectedPhases.size} 个阶段\n` : '') +
+      (selectedActions.size > 0 ? `- ${selectedActions.size} 个行动\n` : '') +
+      '\n此操作不可撤销！'
+    )
+
+    if (!confirmed) return
+
+    setIsBatchDeleting(true)
+    let successCount = 0
+    let failCount = 0
+
+    try {
+      // 批量删除行动
+      for (const actionId of selectedActions) {
+        try {
+          const response = await fetch(`/api/actions/${actionId}`, { method: 'DELETE' })
+          if (response.ok) {
+            successCount++
+          } else {
+            failCount++
+          }
+        } catch (error) {
+          failCount++
+        }
+      }
+
+      // 批量删除阶段
+      for (const phaseId of selectedPhases) {
+        try {
+          const response = await fetch(`/api/phases/${phaseId}`, { method: 'DELETE' })
+          if (response.ok) {
+            successCount++
+          } else {
+            failCount++
+          }
+        } catch (error) {
+          failCount++
+        }
+      }
+
+      // 批量删除目标
+      for (const goalId of selectedGoals) {
+        try {
+          const response = await fetch(`/api/goals/${goalId}`, { method: 'DELETE' })
+          if (response.ok) {
+            successCount++
+          } else {
+            failCount++
+          }
+        } catch (error) {
+          failCount++
+        }
+      }
+
+      if (successCount > 0) {
+        toast.success(`成功删除 ${successCount} 个项目${failCount > 0 ? `，${failCount} 个失败` : ''}`)
+        // 清空选择并退出批量模式
+        setSelectedGoals(new Set())
+        setSelectedPhases(new Set())
+        setSelectedActions(new Set())
+        setIsBatchSelectMode(false)
+        router.refresh()
+      } else if (failCount > 0) {
+        toast.error(`删除失败，共 ${failCount} 个项目`)
+      }
+    } catch (error) {
+      toast.error('批量删除过程中发生错误')
+    } finally {
+      setIsBatchDeleting(false)
+    }
+  }, [selectedGoals, selectedPhases, selectedActions, router])
+
+  // 处理阶段拖拽结束
+  const handlePhaseDragEnd = useCallback(async (event: DragEndEvent, goalId: string) => {
+    const { active, over } = event
+
+    if (!over || active.id === over.id) {
+      return
+    }
+
+    const goal = goals.find(g => g.id === goalId)
+    if (!goal) return
+
+    const oldIndex = goal.phases.findIndex(p => p.id === active.id)
+    const newIndex = goal.phases.findIndex(p => p.id === over.id)
+
+    if (oldIndex === -1 || newIndex === -1) return
+
+    const newPhases = arrayMove(goal.phases, oldIndex, newIndex)
+    const phaseIds = newPhases.map(p => p.id)
+
+    try {
+      const response = await fetch('/api/phases/reorder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phaseIds }),
+      })
+
+      const result = await handleApiResponse(response, '更新排序失败')
+      if (result.success) {
+        // 更新本地状态
+        setGoals(prev => prev.map(g => 
+          g.id === goalId 
+            ? { ...g, phases: newPhases }
+            : g
+        ))
+        toast.success('排序已更新')
+      }
+    } catch (error) {
+      // handleApiResponse 已处理错误
+    }
+  }, [goals])
+
+  // 处理行动拖拽结束
+  const handleActionDragEnd = useCallback(async (event: DragEndEvent, phaseId: string) => {
+    const { active, over } = event
+
+    if (!over || active.id === over.id) {
+      return
+    }
+
+    // 找到包含该阶段的目标
+    const goal = goals.find(g => g.phases.some(p => p.id === phaseId))
+    if (!goal) return
+
+    const phase = goal.phases.find(p => p.id === phaseId)
+    if (!phase) return
+
+    const oldIndex = phase.actions.findIndex(a => a.id === active.id)
+    const newIndex = phase.actions.findIndex(a => a.id === over.id)
+
+    if (oldIndex === -1 || newIndex === -1) return
+
+    const newActions = arrayMove(phase.actions, oldIndex, newIndex)
+    const actionIds = newActions.map(a => a.id)
+
+    try {
+      const response = await fetch('/api/actions/reorder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ actionIds }),
+      })
+
+      const result = await handleApiResponse(response, '更新排序失败')
+      if (result.success) {
+        // 更新本地状态
+        setGoals(prev => prev.map(g => 
+          g.id === goal.id
+            ? {
+                ...g,
+                phases: g.phases.map(p =>
+                  p.id === phaseId
+                    ? { ...p, actions: newActions }
+                    : p
+                )
+              }
+            : g
+        ))
+        toast.success('排序已更新')
+      }
+    } catch (error) {
+      // handleApiResponse 已处理错误
+    }
+  }, [goals])
+
   return (
-    <div className="min-h-screen p-4 bg-background">
+    <div className="min-h-screen p-4 pt-20 bg-background">
+      {/* 新用户引导 - 只在客户端渲染，避免水合错误 */}
+      {isClient && showOnboarding && (
+        <OnboardingGuide
+          onStart={() => {
+            setShowOnboarding(false)
+            setIsGoalDialogOpen(true)
+            localStorage.setItem('hasSeenOnboarding', 'true')
+          }}
+          onDismiss={() => {
+            setShowOnboarding(false)
+            localStorage.setItem('hasSeenOnboarding', 'true')
+          }}
+        />
+      )}
       <div className="max-w-4xl mx-auto space-y-4">
-        <div className="flex justify-between items-center">
+        <div className="flex justify-between items-center flex-wrap gap-2">
           <h1 className="text-2xl font-bold">目标规划</h1>
+          <div className="flex gap-2">
+            {isDev && (
+              <Button
+                variant={isBatchSelectMode ? 'default' : 'outline'}
+                onClick={toggleBatchSelectMode}
+                disabled={isBatchDeleting}
+              >
+                {isBatchSelectMode ? (
+                  <>
+                    <CheckSquare className="w-4 h-4 mr-2" />
+                    退出批量模式
+                  </>
+                ) : (
+                  <>
+                    <Square className="w-4 h-4 mr-2" />
+                    批量操作
+                  </>
+                )}
+              </Button>
+            )}
           <Button onClick={() => setIsGoalDialogOpen(true)}>
             <Plus className="w-4 h-4 mr-2" />
             新建目标
           </Button>
+          </div>
         </div>
 
+        {/* 批量操作工具栏 */}
+        {isBatchSelectMode && isDev && (
+          <Card className="border-primary/50 bg-primary/5">
+            <CardContent className="py-3">
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <div className="flex items-center gap-4 text-sm">
+                  <span className="font-medium">
+                    已选择：{selectedGoals.size + selectedPhases.size + selectedActions.size} 项
+                  </span>
+                  {selectedGoals.size > 0 && (
+                    <span className="text-muted-foreground">{selectedGoals.size} 个目标</span>
+                  )}
+                  {selectedPhases.size > 0 && (
+                    <span className="text-muted-foreground">{selectedPhases.size} 个阶段</span>
+                  )}
+                  {selectedActions.size > 0 && (
+                    <span className="text-muted-foreground">{selectedActions.size} 个行动</span>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  {selectedGoals.size > 0 && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={selectAllGoals}
+                    >
+                      {selectedGoals.size === goals.length ? '取消全选' : '全选目标'}
+                    </Button>
+                  )}
+                  {(selectedGoals.size > 0 || selectedPhases.size > 0 || selectedActions.size > 0) && (
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={handleBatchDelete}
+                      disabled={isBatchDeleting}
+                    >
+                      <Trash2 className="w-4 h-4 mr-2" />
+                      {isBatchDeleting ? '删除中...' : '批量删除'}
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {goals.length === 0 ? (
-          <Card>
-            <CardContent className="py-12 text-center space-y-4">
-              <div className="space-y-2">
-                <p className="text-lg font-semibold">还没有目标，创建一个开始吧</p>
-                <p className="text-sm text-muted-foreground">
-                  建议使用模板快速创建，系统会自动生成阶段和示例行动
+          <Card className="border-dashed">
+            <CardContent className="py-16 text-center space-y-6">
+              <div className="space-y-3">
+                <div className="text-6xl mb-4">🎯</div>
+                <p className="text-xl font-semibold">还没有目标，创建一个开始吧</p>
+                <p className="text-sm text-muted-foreground max-w-md mx-auto">
+                  建议使用模板快速创建，系统会自动生成阶段和示例行动，帮助你快速开始执行
                 </p>
               </div>
-              <Button onClick={() => setIsGoalDialogOpen(true)} size="lg">
+              <div className="flex justify-center">
+                <Button onClick={() => setIsGoalDialogOpen(true)} size="lg" className="min-w-[140px]">
+                  <Plus className="w-4 h-4 mr-2" />
                 创建目标
-              </Button>
-              <p className="text-xs text-muted-foreground mt-4">
-                💡 提示：创建目标时勾选&ldquo;使用模板&rdquo;，可以快速开始
-              </p>
+                </Button>
+              </div>
+              <div className="pt-4 border-t space-y-2">
+                <p className="text-xs font-medium text-muted-foreground">💡 快速开始提示：</p>
+                <ul className="text-xs text-muted-foreground space-y-1 max-w-md mx-auto text-left">
+                  <li>• 点击&ldquo;创建目标&rdquo;后，可以勾选&ldquo;使用模板快速创建&rdquo;来快速生成阶段和行动</li>
+                  <li>• 也可以手动创建目标，然后逐步添加阶段和行动</li>
+                  <li>• 创建完成后，记得点击&ldquo;设为当前目标&rdquo;开始执行</li>
+                </ul>
+              </div>
             </CardContent>
           </Card>
         ) : (
           <div className="space-y-4">
-            {goals.map((goal) => (
+            {goals.map((goal) => {
+              // 使用局部变量优化渲染性能
+              const isExpanded = expandedGoals.has(goal.id)
+              const hasPhases = goal.phases.length > 0
+              
+              // 获取分类显示名称（支持自定义分类）
+              const getCategoryDisplayName = (category: string, phases: typeof goal.phases) => {
+                if (category === 'health') return '健康'
+                if (category === 'learning') return '学习'
+                if (category === 'project') return '项目'
+                if (category === 'custom') {
+                  // 尝试从第一个阶段的描述中提取自定义分类名称
+                  if (phases.length > 0 && phases[0].description) {
+                    const match = phases[0].description.match(/\[分类:\s*([^\]]+)\]/)
+                    if (match && match[1]) {
+                      return match[1].trim()
+                    }
+                  }
+                  return '自定义'
+                }
+                return '未分类'
+              }
+              
+              return (
               <Card key={goal.id} className="hover:shadow-lg transition-shadow duration-200 rounded-xl overflow-hidden">
                 <CardHeader className="pb-4">
                   <div className="flex items-center justify-between flex-wrap gap-2">
@@ -552,7 +1453,7 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
                         onClick={() => toggleGoal(goal.id)}
                         className="p-1.5 hover:bg-muted rounded-lg transition-colors flex-shrink-0"
                       >
-                        {expandedGoals.has(goal.id) ? (
+                        {isExpanded ? (
                           <ChevronDown className="w-5 h-5 transition-transform" />
                         ) : (
                           <ChevronRight className="w-5 h-5 transition-transform" />
@@ -560,16 +1461,51 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
                       </button>
                       <CardTitle className="text-xl truncate">{goal.name || '未命名目标'}</CardTitle>
                       <span className="text-xs font-medium bg-primary/10 text-primary px-3 py-1 rounded-full flex-shrink-0">
-                        {goal.category === 'health' ? '健康' : goal.category === 'learning' ? '学习' : goal.category === 'project' ? '项目' : '未分类'}
+                        {getCategoryDisplayName(goal.category, goal.phases)}
                       </span>
                     </div>
                     <div className="flex gap-2">
+                      {/* 状态标签 */}
+                      {goal.status === 'paused' && (
+                        <span className="text-xs font-medium bg-yellow-100 dark:bg-yellow-900/20 text-yellow-800 dark:text-yellow-200 px-2 py-1 rounded flex items-center gap-1">
+                          <Pause className="w-3 h-3" />
+                          已暂停
+                        </span>
+                      )}
+                      {goal.status === 'completed' && (
+                        <span className="text-xs font-medium bg-green-100 dark:bg-green-900/20 text-green-800 dark:text-green-200 px-2 py-1 rounded">
+                          已完成
+                        </span>
+                      )}
+                      
+                      {/* 暂停/恢复按钮 */}
+                      {goal.status !== 'completed' && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleToggleGoalStatus(goal.id, goal.status)}
+                          title={goal.status === 'paused' ? '恢复目标' : '暂停目标'}
+                        >
+                          {goal.status === 'paused' ? (
+                            <>
+                              <Play className="w-3 h-3 mr-1" />
+                              恢复
+                            </>
+                          ) : (
+                            <>
+                              <Pause className="w-3 h-3 mr-1" />
+                              暂停
+                            </>
+                          )}
+                        </Button>
+                      )}
+                      
                       <Button
                         size="sm"
                         variant="outline"
                         onClick={() => handleSetCurrentGoal(goal.id)}
-                        disabled={goal.status === 'completed'}
-                        title={goal.status === 'completed' ? '已完成的目标无法设为当前目标' : ''}
+                        disabled={goal.status === 'completed' || goal.status === 'paused'}
+                        title={goal.status === 'completed' ? '已完成的目标无法设为当前目标' : goal.status === 'paused' ? '已暂停的目标无法设为当前目标' : ''}
                       >
                         设为当前目标
                       </Button>
@@ -589,91 +1525,113 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
                     {goal.start_date || '开始日期未设置'} {goal.end_date ? `- ${goal.end_date}` : ''}
                   </CardDescription>
                 </CardHeader>
-                {expandedGoals.has(goal.id) && (
+                {isExpanded && (
                   <CardContent className="space-y-4">
-                    {goal.phases.length === 0 ? (
+                    {!hasPhases ? (
+                      <div className="text-center py-6 space-y-3 border border-dashed rounded-lg">
                       <p className="text-sm text-muted-foreground">还没有阶段</p>
-                    ) : (
-                      goal.phases.map((phase) => (
-                        <div key={phase.id} className="border-l-2 pl-4 space-y-2">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <button
-                                onClick={() => togglePhase(phase.id)}
-                                className="p-1 hover:bg-muted rounded"
-                              >
-                                {expandedPhases.has(phase.id) ? (
-                                  <ChevronDown className="w-4 h-4" />
-                                ) : (
-                                  <ChevronRight className="w-4 h-4" />
-                                )}
-                              </button>
-                              <h3 className="font-semibold">{phase.name || '未命名阶段'}</h3>
-                            </div>
-                            <div className="flex gap-2">
                               <Button
                                 size="sm"
-                                variant="ghost"
+                          variant="outline"
                                 onClick={() => {
-                                  setSelectedPhaseId(phase.id)
-                                  setIsActionDialogOpen(true)
+                            setSelectedGoalId(goal.id)
+                            setIsPhaseDialogOpen(true)
                                 }}
                               >
                                 <Plus className="w-4 h-4 mr-1" />
-                                添加行动
+                          添加第一个阶段
                               </Button>
-                              {isDev && (
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  onClick={() => handleDeletePhase(phase.id)}
-                                  className="text-muted-foreground hover:text-destructive"
-                                >
-                                  <Trash2 className="w-3 h-3" />
-                                </Button>
-                              )}
                             </div>
-                          </div>
+                    ) : (
+                      <DndContext
+                        sensors={sensors}
+                        collisionDetection={closestCenter}
+                        onDragEnd={(event) => handlePhaseDragEnd(event, goal.id)}
+                      >
+                        <SortableContext
+                          items={goal.phases.map(p => p.id)}
+                          strategy={verticalListSortingStrategy}
+                        >
+                          {goal.phases.map((phase) => {
+                            const isPhaseSelected = selectedPhases.has(phase.id)
+                            const isPhaseExpanded = expandedPhases.has(phase.id)
+                            
+                            return (
+                              <div key={phase.id}>
+                                <SortablePhaseItem
+                                  phase={phase}
+                                  goalId={goal.id}
+                                  isPhaseSelected={isPhaseSelected}
+                                  isPhaseExpanded={isPhaseExpanded}
+                                  isBatchSelectMode={isBatchSelectMode}
+                                  isDev={isDev}
+                                  onTogglePhase={togglePhase}
+                                  onTogglePhaseSelection={togglePhaseSelection}
+                                  onAddAction={() => {
+                                    setSelectedPhaseId(phase.id)
+                                    setIsActionDialogOpen(true)
+                                  }}
+                                  onDeletePhase={handleDeletePhase}
+                                  onDragEnd={handlePhaseDragEnd}
+                                />
                           {phase.description && (
-                            <p className="text-sm text-muted-foreground">{phase.description}</p>
+                                  <p className="text-sm text-muted-foreground ml-6">{phase.description}</p>
                           )}
-                          {expandedPhases.has(phase.id) && (
+                                {isPhaseExpanded && (
                             <div className="space-y-2 ml-6">
                               {phase.actions.length === 0 ? (
+                                      <div className="text-center py-4 space-y-2 border border-dashed rounded-lg bg-muted/30">
                                 <p className="text-sm text-muted-foreground">还没有行动</p>
-                              ) : (
-                                phase.actions.map((action) => (
-                                  <div key={action.id} className="bg-muted p-3 rounded flex items-start justify-between gap-2">
-                                    <div className="flex-1">
-                                      <div className="flex items-center gap-2">
-                                        <p className="font-medium text-sm">{action.title || '未命名行动'}</p>
-                                        {action.completed_at && (
-                                          <span className="text-xs bg-green-100 dark:bg-green-900/20 text-green-800 dark:text-green-200 px-2 py-0.5 rounded">
-                                            已完成
-                                          </span>
-                                        )}
-                                      </div>
-                                      <p className="text-xs text-muted-foreground mt-1">
-                                        {action.definition || '完成标准未设置'}
-                                      </p>
-                                    </div>
-                                    {isDev && (
                                       <Button
                                         size="sm"
-                                        variant="ghost"
-                                        onClick={() => handleDeleteAction(action.id)}
-                                        className="text-muted-foreground hover:text-destructive shrink-0"
+                                          variant="outline"
+                                          onClick={() => {
+                                            setSelectedPhaseId(phase.id)
+                                            setIsActionDialogOpen(true)
+                                          }}
+                                          disabled={isBatchSelectMode}
                                       >
-                                        <Trash2 className="w-3 h-3" />
+                                          <Plus className="w-3 h-3 mr-1" />
+                                          添加第一个行动
                                       </Button>
-                                    )}
                                   </div>
-                                ))
+                                    ) : (
+                                      <DndContext
+                                        sensors={sensors}
+                                        collisionDetection={closestCenter}
+                                        onDragEnd={(event) => handleActionDragEnd(event, phase.id)}
+                                      >
+                                        <SortableContext
+                                          items={phase.actions.map(a => a.id)}
+                                          strategy={verticalListSortingStrategy}
+                                        >
+                                          {phase.actions.map((action) => {
+                                            const isActionSelected = selectedActions.has(action.id)
+                                            
+                                            return (
+                                              <SortableActionItem
+                                                key={action.id}
+                                                action={action}
+                                                phaseId={phase.id}
+                                                isActionSelected={isActionSelected}
+                                                isBatchSelectMode={isBatchSelectMode}
+                                                isDev={isDev}
+                                                onToggleActionSelection={toggleActionSelection}
+                                                onDeleteAction={handleDeleteAction}
+                                                onDragEnd={handleActionDragEnd}
+                                              />
+                                            )
+                                          })}
+                                        </SortableContext>
+                                      </DndContext>
                               )}
                             </div>
                           )}
                         </div>
-                      ))
+                            )
+                          })}
+                        </SortableContext>
+                      </DndContext>
                     )}
                     <Button
                       size="sm"
@@ -689,7 +1647,8 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
                   </CardContent>
                 )}
               </Card>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>
@@ -715,20 +1674,18 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
               <Label htmlFor="goal-category">类别</Label>
               <Select 
                 value={goalCategory} 
-                onValueChange={(v: 'health' | 'learning' | 'project') => {
+                onValueChange={(v: 'health' | 'learning' | 'project' | 'custom') => {
                   setGoalCategory(v)
-                  // 切换模板时重置数量为默认值，并显示高亮动画
-                  setTemplateActionCount('7')
+                  if (v !== 'custom') {
+                    setCustomCategoryName('')
+                  }
+                  // 切换模板时显示高亮动画
                   setIsPreviewExpanded(true)
-                  setCategoryChanged(true)
-                  setTimeout(() => setCategoryChanged(false), 1000)
-                  // 切换类别时清空编辑的模板行动
-                  setTemplateActions({})
-                  // 如果使用模板，用默认日期初始化（如果还未设置）
-                  if (useTemplate && !goalStartDate) {
+                  // 如果使用模板库，用默认日期初始化（如果还未设置）
+                  if (useTemplateLibrary && !goalStartDate) {
                     setGoalStartDate(getToday())
                   }
-                  if (useTemplate && !goalEndDate) {
+                  if (useTemplateLibrary && !goalEndDate) {
                     // 默认结束日期为开始日期后30天，如果开始日期已设置则基于开始日期
                     const baseDate = goalStartDate || getToday()
                     setGoalEndDate(getRelativeDate(30, baseDate))
@@ -742,20 +1699,38 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
                   <SelectItem value="health">健康</SelectItem>
                   <SelectItem value="learning">学习</SelectItem>
                   <SelectItem value="project">项目</SelectItem>
+                  <SelectItem value="custom">自定义</SelectItem>
                 </SelectContent>
               </Select>
+              {goalCategory === 'custom' && (
+                <div className="mt-2">
+                  <Label htmlFor="custom-category-name" className="text-sm text-muted-foreground">
+                    自定义分类名称（可选）
+                  </Label>
+                  <Input
+                    id="custom-category-name"
+                    value={customCategoryName}
+                    onChange={(e) => setCustomCategoryName(e.target.value)}
+                    placeholder="例如：工作、生活、兴趣等"
+                    className="mt-1"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    💡 输入自定义分类名称，方便后续管理和查找
+                  </p>
+                </div>
+              )}
             </div>
             
-            {/* 模板化创建选项 */}
+            {/* 模板化创建选项 - 统一使用模板库 */}
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <input
                   type="checkbox"
-                  id="use-template"
-                  checked={useTemplate}
+                  id="use-template-library"
+                  checked={useTemplateLibrary}
                   onChange={(e) => {
                     const checked = e.target.checked
-                    setUseTemplate(checked)
+                    setUseTemplateLibrary(checked)
                     if (checked) {
                       setIsPreviewExpanded(true)
                       // 使用模板时，用默认值初始化字段（如果还未设置）
@@ -763,201 +1738,98 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
                         setGoalStartDate(getToday())
                       }
                       if (!goalEndDate) {
-                        // 默认结束日期为开始日期后30天，如果开始日期已设置则基于开始日期
                         const baseDate = goalStartDate || getToday()
                         setGoalEndDate(getRelativeDate(30, baseDate))
                       }
+                    } else {
+                      setSelectedGoalTemplate(null)
+                      setTemplatePhases([])
                     }
                   }}
                   className="rounded"
                 />
-                <Label htmlFor="use-template" className="cursor-pointer">
-                  使用模板快速创建（自动生成阶段和示例行动，所有字段可修改）
+                <Label htmlFor="use-template-library" className="cursor-pointer">
+                  使用模板快速创建（从模板库选择，支持多阶段、排序、编辑）
                 </Label>
               </div>
-              {useTemplate && (
-                <div className={`ml-6 space-y-3 p-3 bg-muted rounded transition-all duration-500 ${
-                  categoryChanged ? 'ring-2 ring-primary ring-offset-2' : ''
-                }`}>
-                  {/* 提示：模板字段可修改 */}
-                  <div className="text-xs text-muted-foreground bg-background/50 p-2 rounded">
-                    💡 提示：模板提供默认值，你可以修改任何字段（目标名称、日期、行动数量等）
-                  </div>
-                  {/* 模板信息预览 - 可折叠 */}
-                  {(() => {
-                    const template = getTemplate(goalCategory)
-                    if (!template) return <div className="text-sm text-muted-foreground">模板加载中...</div>
-                    
-                    // 明确获取数量：如果 templateActionCount 无效，显示"未设置"
-                    const parsedCount = templateActionCount ? parseInt(templateActionCount) : null
-                    const count = parsedCount && parsedCount >= 1 && parsedCount <= 100 ? parsedCount : null
-                    const totalActions = count !== null && template.phase.exampleActions.length > 0
-                      ? template.phase.exampleActions.length * count
-                      : null
-                    const isLargeCount = count !== null && count > 50
-                    
-                    return (
-                      <>
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <div className="text-sm font-medium mb-1">
-                              模板：{template.phase.name}
-                            </div>
-                            {template.phase.description && (
-                              <div 
-                                className="text-xs text-muted-foreground"
-                                dangerouslySetInnerHTML={{ 
-                                  __html: renderSimpleMarkdown(template.phase.description) 
-                                }}
-                              />
-                            )}
-                          </div>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setIsPreviewExpanded(!isPreviewExpanded)}
-                            className="h-6 px-2 text-xs"
-                          >
-                            {isPreviewExpanded ? '收起' : '展开'}
-                          </Button>
-                        </div>
-                        
-                        {/* 模板行动编辑 - 可折叠 */}
-                        {isPreviewExpanded && (
-                          <div className="space-y-3">
-                            <div className="text-xs font-medium">模板行动（可编辑）：</div>
-                            <div className="space-y-3">
-                              {template.phase.exampleActions.map((exampleAction, idx) => {
-                                const editedAction = templateActions[idx] || {
-                                  titleTemplate: exampleAction.titleTemplate,
-                                  definition: exampleAction.definition,
-                                  estimatedTime: exampleAction.estimatedTime?.toString() || ''
-                                }
-                                const previewTitle = editedAction.titleTemplate.replace(/{n}/g, '1')
-                                return (
-                                  <div key={idx} className="text-xs bg-background p-3 rounded border space-y-2">
-                                    <div>
-                                      <Label className="text-xs">标题模板（使用 {`{n}`} 表示序号）</Label>
-                                      <Input
-                                        value={editedAction.titleTemplate}
-                                        onChange={(e) => {
-                                          setTemplateActions({
-                                            ...templateActions,
-                                            [idx]: { ...editedAction, titleTemplate: e.target.value }
-                                          })
-                                        }}
-                                        className="h-7 text-xs mt-1"
-                                        placeholder="例如：核心训练 Day {n}"
-                                      />
-                                      <div className="text-[10px] text-muted-foreground mt-0.5">
-                                        预览：{previewTitle} {count !== null ? `(将生成 ${count} 个)` : '(数量未设置)'}
-                                      </div>
-                                    </div>
-                                    <div>
-                                      <Label className="text-xs">完成标准</Label>
-                                      <Textarea
-                                        value={editedAction.definition}
-                                        onChange={(e) => {
-                                          setTemplateActions({
-                                            ...templateActions,
-                                            [idx]: { ...editedAction, definition: e.target.value }
-                                          })
-                                        }}
-                                        className="h-16 text-xs mt-1 resize-none"
-                                        placeholder="例如：完成3组，每组10次"
-                                      />
-                                    </div>
-                                    <div>
-                                      <Label className="text-xs">预计时间（分钟，可选）</Label>
-                                      <Input
-                                        type="number"
-                                        value={editedAction.estimatedTime}
-                                        onChange={(e) => {
-                                          setTemplateActions({
-                                            ...templateActions,
-                                            [idx]: { ...editedAction, estimatedTime: e.target.value }
-                                          })
-                                        }}
-                                        className="h-7 text-xs mt-1"
-                                        placeholder="例如：30"
-                                        min="0"
-                                      />
-                                    </div>
-                                  </div>
-                                )
-                              })}
-                            </div>
-                          </div>
-                        )}
-                        
-                        {/* 批量生成数量控制 */}
-                        <div className="space-y-2 pt-2 border-t">
-                          <Label htmlFor="template-action-count" className="text-xs">
-                            每个示例行动生成数量（默认 7 个，范围 1-100）
-                          </Label>
-                          <div className="flex gap-2 items-center">
-                            <Input
-                              id="template-action-count"
-                              type="number"
-                              value={templateActionCount}
-                              onChange={(e) => {
-                                const val = e.target.value
-                                // 限制范围
-                                if (val === '' || (parseInt(val) >= 1 && parseInt(val) <= 100)) {
-                                  setTemplateActionCount(val)
-                                }
-                              }}
-                              min="1"
-                              max="100"
-                              className={`h-8 text-xs flex-1 ${
-                                isLargeCount ? 'border-yellow-500' : ''
-                              }`}
-                            />
-                            {/* 快速选择常用数量 */}
-                            <div className="flex gap-1">
-                              {[7, 10, 15].map((quickCount) => (
-                                <Button
-                                  key={quickCount}
-                                  type="button"
-                                  variant={templateActionCount === quickCount.toString() ? "default" : "outline"}
-                                  size="sm"
-                                  onClick={() => setTemplateActionCount(quickCount.toString())}
-                                  className="h-8 px-2 text-xs"
-                                >
-                                  {quickCount}
-                                </Button>
-                              ))}
-                            </div>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <div className="text-xs text-muted-foreground">
-                              总计：{totalActions !== null ? (
-                                <span className="font-medium">{totalActions}</span>
-                              ) : (
-                                <span className="font-medium">未设置</span>
-                              )} 个行动
-                            </div>
-                            {isLargeCount && (
-                              <div className="text-xs text-yellow-600 flex items-center gap-1">
-                                <span>⚠️</span>
-                                <span>数量过多可能延迟生成</span>
-                              </div>
-                            )}
-                          </div>
-                          {count !== null && count > 0 && (
-                            <p className={`text-xs ${
-                              isLargeCount ? 'text-yellow-600' : 'text-muted-foreground'
-                            }`}>
-                              {isLargeCount 
-                                ? '提示：数量过多可能导致创建时间较长，建议不超过 50' 
-                                : '提示：数量过多可能导致创建时间较长，建议不超过 50'}
-                            </p>
-                          )}
-                        </div>
-                      </>
-                    )
-                  })()}
+              
+              {/* 从模板库选择 */}
+              {useTemplateLibrary && (
+                <div className="ml-6 space-y-3 p-3 bg-muted rounded min-w-0">
+                  {!selectedGoalTemplate ? (
+                    <div className="space-y-2">
+                      <div className="text-xs text-muted-foreground bg-background/50 p-2 rounded">
+                        💡 请从模板库选择一个模板，然后可以编辑、排序、添加删除阶段和行动
+                      </div>
+                      <div className="border rounded-lg p-4 md:p-6 bg-background max-h-[500px] overflow-y-auto">
+                        <GoalTemplateSelector
+                          selectMode={true}
+                          selectCategory={goalCategory}
+                          onSelect={(template) => {
+                            console.log('Template selected:', template)
+                            // 确保模板数据存在
+                            if (!template) {
+                              toast.error('模板数据无效')
+                              return
+                            }
+                            
+                            setSelectedGoalTemplate(template)
+                            
+                            // 将模板转换为可编辑格式
+                            // 检查模板是否有 phases 数组（多阶段支持）
+                            let phasesToSet = []
+                            
+                            // 使用类型断言处理可能的多阶段模板
+                            const templateWithPhases = template as any
+                            if (templateWithPhases.phases && Array.isArray(templateWithPhases.phases) && templateWithPhases.phases.length > 0) {
+                              // 多阶段模板
+                              phasesToSet = templateWithPhases.phases.map((phase: any) => ({
+                                name: phase.name || '',
+                                description: phase.description || '',
+                                actions: (phase.actions || []).map((action: any) => ({
+                                  title_template: action.title_template || '',
+                                  definition: action.definition || '',
+                                  estimated_time: action.estimated_time?.toString() || '',
+                                  count: action.count?.toString() || '7',
+                                })),
+                              }))
+                            } else {
+                              // 单阶段模板（兼容旧格式）
+                              phasesToSet = [{
+                                name: template.phase_name || '',
+                                description: template.phase_description || '',
+                                actions: (template.actions || []).map((action: any) => ({
+                                  title_template: action.title_template || '',
+                                  definition: action.definition || '',
+                                  estimated_time: action.estimated_time?.toString() || '',
+                                  count: action.count?.toString() || '7',
+                                })),
+                              }]
+                            }
+                            
+                            if (phasesToSet.length === 0) {
+                              toast.error('模板没有阶段数据')
+                              return
+                            }
+                            
+                            setTemplatePhases(phasesToSet)
+                            console.log('Template phases set:', phasesToSet)
+                            toast.success('模板已选择，可以开始编辑')
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <TemplateEditor
+                      template={selectedGoalTemplate}
+                      phases={templatePhases}
+                      onPhasesChange={setTemplatePhases}
+                      onRemoveTemplate={() => {
+                        setSelectedGoalTemplate(null)
+                        setTemplatePhases([])
+                      }}
+                    />
+                  )}
                 </div>
               )}
             </div>
@@ -1109,6 +1981,66 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
                 </div>
               </div>
             </div>
+            
+            {/* 预览部分 */}
+            <div className="border-t pt-4 mt-4">
+              <button
+                type="button"
+                onClick={() => setIsPreviewExpanded(!isPreviewExpanded)}
+                className="flex items-center justify-between w-full text-left"
+              >
+                <Label className="text-sm font-semibold cursor-pointer">目标预览</Label>
+                {isPreviewExpanded ? (
+                  <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                ) : (
+                  <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                )}
+              </button>
+              {isPreviewExpanded && (
+                <div className="mt-3 p-4 bg-muted/50 rounded-lg space-y-3">
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-medium text-muted-foreground">目标名称：</span>
+                      <span className="text-sm font-medium">{goalName || '未填写'}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-medium text-muted-foreground">分类：</span>
+                      <span className="text-sm font-medium">
+                        {(() => {
+                          if (goalCategory === 'health') return '健康'
+                          if (goalCategory === 'learning') return '学习'
+                          if (goalCategory === 'project') return '项目'
+                          if (goalCategory === 'custom') {
+                            return customCategoryName.trim() || '自定义'
+                          }
+                          return '未选择'
+                        })()}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-medium text-muted-foreground">开始日期：</span>
+                      <span className="text-sm">{goalStartDate || '未设置'}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-medium text-muted-foreground">结束日期：</span>
+                      <span className="text-sm">{goalEndDate || '未设置'}</span>
+                    </div>
+                    {useTemplateLibrary && selectedGoalTemplate && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-medium text-muted-foreground">使用模板：</span>
+                        <span className="text-sm">{selectedGoalTemplate.name}</span>
+                      </div>
+                    )}
+                    {useTemplateLibrary && templatePhases.length > 0 && (
+                      <div className="flex items-start gap-2">
+                        <span className="text-xs font-medium text-muted-foreground">阶段数量：</span>
+                        <span className="text-sm">{templatePhases.length} 个阶段</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
           <DialogFooter className="flex-shrink-0 border-t pt-3">
             <Button variant="outline" onClick={() => setIsGoalDialogOpen(false)}>
@@ -1259,15 +2191,22 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="action-definition-batch">完成标准 *</Label>
-                  <Input
+                  <Textarea
                     id="action-definition-batch"
                     value={actionDefinition}
                     onChange={(e) => setActionDefinition(e.target.value)}
-                    placeholder="必须是客观可判断的标准，例如：完成 3 组平板支撑，每组 60 秒"
+                    placeholder="例如：完成 3 组平板支撑，每组 60 秒"
+                    rows={3}
+                    className="resize-none"
                   />
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground">
+                      💡 一个行动可以包含多个行为，只要完成标准明确即可
+                    </p>
                   <p className="text-xs text-muted-foreground">
                     所有行动将共用此完成标准（支持占位符，如 {"{date}"}、{"{userName}"} 等）
                   </p>
+                  </div>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="action-time-batch">预计时间（分钟，可选）</Label>
@@ -1283,34 +2222,97 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
             ) : (
               /* 单个创建表单 */
               <>
-                <div className="space-y-2">
-                  <Label htmlFor="action-title">行动标题 *</Label>
-                  <Input
-                    id="action-title"
-                    value={actionTitle}
-                    onChange={(e) => setActionTitle(e.target.value)}
-                    placeholder="例如：核心训练 Day 3"
+                {/* 使用模板选项 */}
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="use-action-template"
+                    checked={useActionTemplate}
+                    onChange={(e) => setUseActionTemplate(e.target.checked)}
+                    className="w-4 h-4"
                   />
+                  <Label htmlFor="use-action-template" className="cursor-pointer text-sm">
+                    从模板库选择
+                  </Label>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="action-definition">完成标准 *</Label>
-                  <Input
-                    id="action-definition"
-                    value={actionDefinition}
-                    onChange={(e) => setActionDefinition(e.target.value)}
-                    placeholder="必须是客观可判断的标准，例如：完成 3 组平板支撑，每组 60 秒"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="action-time">预计时间（分钟，可选）</Label>
-                  <Input
-                    id="action-time"
-                    type="number"
-                    value={actionEstimatedTime}
-                    onChange={(e) => setActionEstimatedTime(e.target.value)}
-                    placeholder="30"
-                  />
-                </div>
+
+                {useActionTemplate ? (
+                  <div className="border rounded-lg p-3 bg-muted/50 max-h-96 overflow-y-auto">
+                    <ActionTemplateSelector
+                      onSelect={(template) => {
+                        setActionTitle(template.title)
+                        setActionDefinition(template.definition)
+                        setActionEstimatedTime(template.estimated_time?.toString() || '')
+                        setUseActionTemplate(false)
+                        toast.success('模板已应用')
+                      }}
+                      selectedCategory={goals.find(g => g.phases.some(p => p.id === selectedPhaseId))?.category}
+                    />
+                  </div>
+                ) : (
+                  <>
+                    <div className="space-y-2">
+                      <Label htmlFor="action-title">行动标题 *</Label>
+                      <Input
+                        id="action-title"
+                        value={actionTitle}
+                        onChange={(e) => setActionTitle(e.target.value)}
+                        placeholder="例如：核心训练 Day 3"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="action-definition">完成标准 *</Label>
+                      <Textarea
+                        id="action-definition"
+                        value={actionDefinition}
+                        onChange={(e) => setActionDefinition(e.target.value)}
+                        placeholder="例如：完成 3 组平板支撑，每组 60 秒"
+                        rows={3}
+                        className="resize-none"
+                      />
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground">
+                          💡 一个行动可以包含多个行为，只要完成标准明确即可
+                        </p>
+                        <details className="text-xs">
+                          <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                            查看示例
+                          </summary>
+                          <div className="mt-2 space-y-2 pl-4 border-l-2 border-primary/20">
+                            <div>
+                              <p className="font-medium text-foreground mb-1">健身示例：</p>
+                              <p className="text-muted-foreground">
+                                热身 ≥ 10分钟 + 训练 ≥ 40分钟 + 拉伸 ≥ 10分钟，总时长 ≥ 60分钟
+                              </p>
+                            </div>
+                            <div>
+                              <p className="font-medium text-foreground mb-1">学习示例：</p>
+                              <p className="text-muted-foreground">
+                                阅读指定章节 + 完成笔记 + 完成课后练习
+                              </p>
+                            </div>
+                            <div>
+                              <p className="font-medium text-foreground mb-1">简单示例：</p>
+                              <p className="text-muted-foreground">
+                                完成 3 组平板支撑，每组 60 秒
+                              </p>
+                            </div>
+                          </div>
+                        </details>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="action-time">预计时间（分钟，可选）</Label>
+                      <Input
+                        id="action-time"
+                        type="number"
+                        value={actionEstimatedTime}
+                        onChange={(e) => setActionEstimatedTime(e.target.value)}
+                        placeholder="30"
+                      />
+                    </div>
+                  </>
+                )}
               </>
             )}
           </div>
@@ -1320,6 +2322,7 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
               setIsBatchMode(false)
               setBatchTitleTemplate('')
               setBatchCount('')
+              setUseActionTemplate(false)
             }}>
               取消
             </Button>
@@ -1355,6 +2358,41 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* 批量创建确认对话框 */}
+      <Dialog open={showBatchConfirmDialog} onOpenChange={setShowBatchConfirmDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>确认批量创建</DialogTitle>
+            <DialogDescription>
+              标题模板中没有找到 {"{n}"} 占位符，所有行动将使用相同的标题。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4 space-y-2">
+            <p className="text-sm text-muted-foreground">
+              建议使用 {"{n}"} 占位符来区分不同的行动，例如：
+            </p>
+            <div className="bg-muted p-3 rounded-lg space-y-1 text-sm">
+              <div className="font-medium">示例：</div>
+              <div>• &ldquo;第 {"{n}"} 天训练&rdquo; → 第 1 天训练、第 2 天训练...</div>
+              <div>• &ldquo;核心训练 Day {"{n}"}&rdquo; → 核心训练 Day 1、核心训练 Day 2...</div>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              如果继续，将创建 {batchCount || 'N'} 个标题相同的行动。
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowBatchConfirmDialog(false)}>
+              取消
+            </Button>
+            <Button onClick={handleConfirmBatchCreate} disabled={isCreatingBatch}>
+              {isCreatingBatch ? '创建中...' : '确认创建'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+
     </div>
   )
 }
