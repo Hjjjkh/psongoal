@@ -18,13 +18,13 @@ function getSiteUrl(request: Request): string {
   }
 
   if (host) {
-    // 判断协议（Zeabur 使用 HTTPS）
-    const protocol = forwardedProto || (host.includes('zeabur.app') ? 'https' : 'http')
+    // 判断协议（本地开发使用 http，线上使用 https）
+    const protocol = forwardedProto || (host.includes('localhost') || host.includes('127.0.0.1') ? 'http' : 'https')
     return `${protocol}://${host}`
   }
 
-  // 默认值
-  return 'https://psongoal.zeabur.app'
+  // 默认值（本地开发）
+  return 'http://localhost:3000'
 }
 
 export async function GET(request: Request) {
