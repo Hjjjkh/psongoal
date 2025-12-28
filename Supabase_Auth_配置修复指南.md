@@ -8,9 +8,14 @@
 
 ### 1. 修复代码（已完成）
 
-已更新 `packages/web/app/auth/login/page.tsx`，添加了 `emailRedirectTo` 配置：
+✅ 已更新 `packages/web/app/auth/login/page.tsx`，添加了 `emailRedirectTo` 配置：
 - 自动检测当前域名（支持本地开发和线上环境）
 - 默认使用 `https://psongoal.zeabur.app`
+
+✅ 已创建 `packages/web/app/auth/callback/route.ts`：
+- 处理邮箱验证回调
+- 自动交换 code 为 session
+- 验证成功后跳转到目标页面
 
 ### 2. Supabase Dashboard 配置（必须完成）
 
