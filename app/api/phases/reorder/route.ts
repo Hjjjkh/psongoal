@@ -44,19 +44,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: '无权访问这些阶段' }, { status: 403 })
     }
 
-    // 批量更新 order_index
-    const updates = phaseIds.map((phaseId, index) => ({
-      id: phaseId,
-      order_index: index + 1,
-    }))
-
-    // 使用 upsert 批量更新
-    const { error: updateError } = await supabase
-      .from('phases')
-      .upsert(updates, { onConflict: 'id' })
-
-    if (updateError) {
-      return NextResponse.json({ error: '更新排序失败' }, { status: 500 })
+    // 批量更新 order_index - 使用 update 而不是 upsert
+    // 因为 phases 表有必填字段（goal_id, name），upsert 会失败
+    for (let index = 0; index < phaseIds.length; index++) {
+      const { error: updateError } = await supabase
+        .from('phases')
+        .update({ order_index: index + 1 })
+        .eq('id', phaseIds[index])
+      
+      if (updateError) {
+        console.error(`Failed to update phase ${phaseIds[index]}:`, updateError)
+        return NextResponse.json({ error: '更新排序失败' }, { status: 500 })
+      }
     }
 
     return NextResponse.json({ success: true })

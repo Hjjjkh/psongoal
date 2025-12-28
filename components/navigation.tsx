@@ -68,9 +68,11 @@ export default function Navigation() {
               size="icon"
               className="md:hidden"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              aria-label={mobileMenuOpen ? '关闭菜单' : '打开菜单'}
+              aria-expanded={mobileMenuOpen}
             >
               {mobileMenuOpen ? (
-                <X className="w-5 h-5" />
+                <X className="w-5 h-5" aria-hidden="true" />
               ) : (
                 <Menu className="w-5 h-5" />
               )}

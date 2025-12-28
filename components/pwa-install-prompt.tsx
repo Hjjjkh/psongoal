@@ -100,8 +100,9 @@ export default function PWAInstallPrompt() {
               size="icon"
               className="h-6 w-6"
               onClick={handleDismiss}
+              aria-label="关闭安装提示"
             >
-              <X className="w-4 h-4" />
+              <X className="w-4 h-4" aria-hidden="true" />
             </Button>
           </div>
           <CardDescription>

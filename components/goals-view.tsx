@@ -1728,6 +1728,7 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
                   type="checkbox"
                   id="use-template-library"
                   checked={useTemplateLibrary}
+                  aria-label="使用模板快速创建"
                   onChange={(e) => {
                     const checked = e.target.checked
                     setUseTemplateLibrary(checked)
@@ -2228,6 +2229,7 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
                     type="checkbox"
                     id="use-action-template"
                     checked={useActionTemplate}
+                    aria-label="使用行动模板"
                     onChange={(e) => setUseActionTemplate(e.target.checked)}
                     className="w-4 h-4"
                   />

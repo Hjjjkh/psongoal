@@ -208,9 +208,10 @@ export default function TemplateEditor({
                       className="h-6 w-6 p-0 text-destructive hover:bg-destructive/10"
                       onClick={() => removePhase(phaseIndex)}
                       disabled={phases.length <= 1}
+                      aria-label="删除阶段"
                       title="删除阶段"
                     >
-                      <Trash2 className="w-3 h-3" />
+                      <Trash2 className="w-3 h-3" aria-hidden="true" />
                     </Button>
                   </div>
                 </div>
@@ -315,9 +316,10 @@ export default function TemplateEditor({
                             size="sm"
                             className="h-6 w-6 p-0 text-destructive hover:bg-destructive/10 flex-shrink-0"
                             onClick={() => removeAction(phaseIndex, actionIndex)}
+                            aria-label="删除行动"
                             title="删除行动"
                           >
-                            <Trash2 className="w-3 h-3" />
+                            <Trash2 className="w-3 h-3" aria-hidden="true" />
                           </Button>
                         </div>
                       </Card>

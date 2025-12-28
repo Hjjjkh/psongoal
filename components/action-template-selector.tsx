@@ -443,9 +443,10 @@ export default function ActionTemplateSelector({ onSelect, selectedCategory }: A
                         e.stopPropagation()
                         handleCopyTemplate(template)
                       }}
+                      aria-label="复制模板"
                       title="复制模板"
                     >
-                      <Copy className="w-3 h-3" />
+                      <Copy className="w-3 h-3" aria-hidden="true" />
                     </Button>
                     <Button
                       variant="ghost"
@@ -455,9 +456,10 @@ export default function ActionTemplateSelector({ onSelect, selectedCategory }: A
                         e.stopPropagation()
                         handleEditTemplate(template)
                       }}
+                      aria-label="编辑模板"
                       title="编辑模板"
                     >
-                      <Edit2 className="w-3 h-3" />
+                      <Edit2 className="w-3 h-3" aria-hidden="true" />
                     </Button>
                     <Button
                       variant="ghost"
@@ -467,9 +469,10 @@ export default function ActionTemplateSelector({ onSelect, selectedCategory }: A
                         e.stopPropagation()
                         handleDeleteClick(template)
                       }}
+                      aria-label="删除模板"
                       title="删除模板"
                     >
-                      <Trash2 className="w-3 h-3" />
+                      <Trash2 className="w-3 h-3" aria-hidden="true" />
                     </Button>
                   </div>
                 </div>

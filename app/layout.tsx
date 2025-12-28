@@ -33,8 +33,7 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
+  // 移除 maximumScale 和 userScalable 以提高兼容性和无障碍性
   themeColor: "#000000",
 }
 

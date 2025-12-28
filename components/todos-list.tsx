@@ -326,9 +326,10 @@ export default function TodosList({ show = true }: TodosListProps) {
                     size="sm"
                     onClick={() => handleDeleteTodo(todo.id)}
                     className="h-6 w-6 p-0"
+                    aria-label="删除待办事项"
                     title="删除"
                   >
-                    <Trash2 className="w-3 h-3" />
+                    <Trash2 className="w-3 h-3" aria-hidden="true" />
                   </Button>
                 </div>
               </div>

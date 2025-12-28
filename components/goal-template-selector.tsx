@@ -1108,9 +1108,10 @@ export default function GoalTemplateSelector({ onSelect, selectMode = false, sel
                           handleCopyTemplate(template)
                         }}
                         className="h-7 w-7 p-0"
+                        aria-label="复制模板"
                         title="复制模板"
                       >
-                        <Copy className="w-3.5 h-3.5" />
+                        <Copy className="w-3.5 h-3.5" aria-hidden="true" />
                       </Button>
                       {!template.is_system && (
                         <Button
@@ -1121,9 +1122,10 @@ export default function GoalTemplateSelector({ onSelect, selectMode = false, sel
                             handleEditTemplate(template)
                           }}
                           className="h-7 w-7 p-0"
+                          aria-label="编辑模板"
                           title="编辑模板"
                         >
-                          <Edit2 className="w-3.5 h-3.5" />
+                          <Edit2 className="w-3.5 h-3.5" aria-hidden="true" />
                         </Button>
                       )}
                       <Button
@@ -1134,6 +1136,7 @@ export default function GoalTemplateSelector({ onSelect, selectMode = false, sel
                           handleDeleteClick(template)
                         }}
                         className={`h-7 w-7 p-0 ${template.is_system ? 'text-destructive hover:text-destructive hover:bg-destructive/10' : ''}`}
+                        aria-label={template.is_system ? '删除系统模板（可重新初始化）' : '删除模板'}
                         title={template.is_system ? '删除系统模板（可重新初始化）' : '删除模板'}
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -1394,9 +1397,10 @@ export default function GoalTemplateSelector({ onSelect, selectMode = false, sel
                             className="h-7 w-7 p-0 hover:bg-muted"
                             onClick={() => movePhase(phaseIndex, 'up')}
                             disabled={phaseIndex === 0}
+                            aria-label="上移阶段"
                             title="上移阶段"
                           >
-                            <ChevronUp className="w-4 h-4" />
+                            <ChevronUp className="w-4 h-4" aria-hidden="true" />
                           </Button>
                           <Button
                             variant="ghost"
@@ -1404,9 +1408,10 @@ export default function GoalTemplateSelector({ onSelect, selectMode = false, sel
                             className="h-7 w-7 p-0 hover:bg-muted"
                             onClick={() => movePhase(phaseIndex, 'down')}
                             disabled={phaseIndex === newTemplate.phases.length - 1}
+                            aria-label="下移阶段"
                             title="下移阶段"
                           >
-                            <ChevronDown className="w-4 h-4" />
+                            <ChevronDown className="w-4 h-4" aria-hidden="true" />
                           </Button>
                           <Button
                             variant="ghost"
@@ -1441,9 +1446,10 @@ export default function GoalTemplateSelector({ onSelect, selectMode = false, sel
                                     className="h-6 w-6 p-0 hover:bg-muted"
                                     onClick={() => moveAction(phaseIndex, actionIndex, 'up')}
                                     disabled={actionIndex === 0}
+                                    aria-label="上移行动"
                                     title="上移行动"
                                   >
-                                    <ChevronUp className="w-3 h-3" />
+                                    <ChevronUp className="w-3 h-3" aria-hidden="true" />
                                   </Button>
                                   <Button
                                     variant="ghost"
@@ -1451,9 +1457,10 @@ export default function GoalTemplateSelector({ onSelect, selectMode = false, sel
                                     className="h-6 w-6 p-0 hover:bg-muted"
                                     onClick={() => moveAction(phaseIndex, actionIndex, 'down')}
                                     disabled={actionIndex === phase.actions.length - 1}
+                                    aria-label="下移行动"
                                     title="下移行动"
                                   >
-                                    <ChevronDown className="w-3 h-3" />
+                                    <ChevronDown className="w-3 h-3" aria-hidden="true" />
                                   </Button>
                                 </div>
                                 <div className="flex-1 space-y-2">
@@ -1662,8 +1669,10 @@ export default function GoalTemplateSelector({ onSelect, selectMode = false, sel
                                 }
                               }}
                               disabled={phaseIndex === 0}
+                              aria-label="上移阶段"
+                              title="上移阶段"
                             >
-                              <ChevronUp className="w-4 h-4" />
+                              <ChevronUp className="w-4 h-4" aria-hidden="true" />
                             </Button>
                             <Button
                               variant="ghost"
@@ -1677,8 +1686,10 @@ export default function GoalTemplateSelector({ onSelect, selectMode = false, sel
                                 }
                               }}
                               disabled={phaseIndex === ((editingTemplate as any).phases || []).length - 1}
+                              aria-label="下移阶段"
+                              title="下移阶段"
                             >
-                              <ChevronDown className="w-4 h-4" />
+                              <ChevronDown className="w-4 h-4" aria-hidden="true" />
                             </Button>
                             <Button
                               variant="ghost"
@@ -1735,8 +1746,10 @@ export default function GoalTemplateSelector({ onSelect, selectMode = false, sel
                                         }
                                       }}
                                       disabled={actionIndex === 0}
+                                      aria-label="上移行动"
+                                      title="上移行动"
                                     >
-                                      <ChevronUp className="w-3 h-3" />
+                                      <ChevronUp className="w-3 h-3" aria-hidden="true" />
                                     </Button>
                                     <Button
                                       variant="ghost"
@@ -1752,8 +1765,10 @@ export default function GoalTemplateSelector({ onSelect, selectMode = false, sel
                                         }
                                       }}
                                       disabled={actionIndex === phase.actions.length - 1}
+                                      aria-label="下移行动"
+                                      title="下移行动"
                                     >
-                                      <ChevronDown className="w-3 h-3" />
+                                      <ChevronDown className="w-3 h-3" aria-hidden="true" />
                                     </Button>
                                   </div>
                                   <div className="flex-1 space-y-2">
