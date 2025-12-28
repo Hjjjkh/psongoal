@@ -52,9 +52,17 @@ function LoginForm() {
       const supabase = createClient()
 
       if (isSignUp) {
+        // 获取当前域名（支持本地开发和线上环境）
+        const siteUrl = typeof window !== 'undefined' 
+          ? window.location.origin 
+          : process.env.NEXT_PUBLIC_SITE_URL || 'https://psongoal.zeabur.app'
+        
         const { data, error } = await supabase.auth.signUp({
           email,
           password,
+          options: {
+            emailRedirectTo: `${siteUrl}/auth/callback`,
+          },
         })
         if (error) {
           console.error('Sign up error:', error)
