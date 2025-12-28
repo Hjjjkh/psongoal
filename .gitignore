@@ -28,6 +28,12 @@ yarn-error.log*
 .env*.local
 .env
 
+# monorepo
+packages/*/node_modules
+packages/*/.next
+packages/*/dist
+packages/*/build
+
 # vercel
 .vercel
 

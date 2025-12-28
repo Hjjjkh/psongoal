@@ -403,7 +403,7 @@ export default async function TodayPage() {
         .eq('user_id', user.id)
         .eq('completed', true)
         .order('date', { ascending: false })
-        .limit(365)
+        .limit(365) // 【产品功能】保持365天查询，确保连续天数计算准确
 
       return calculateConsecutiveDays(recentExecutions || [])
     })(),

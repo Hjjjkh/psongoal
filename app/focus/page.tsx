@@ -16,8 +16,9 @@ const FocusSpaceView = dynamicImport(() => import('@/components/focus-space-view
  * 【优化】禁用缓存，确保每次访问都获取最新数据
  * 这样完成行动后立即查看，能显示最新的状态
  */
-export const revalidate = 0
-export const dynamic = 'force-dynamic'
+// 【性能优化】使用 ISR，30秒缓存
+// 专注空间需要相对实时的数据，但不需要完全禁用缓存
+export const revalidate = 30
 
 export default async function FocusPage() {
   const supabase = await createClient()

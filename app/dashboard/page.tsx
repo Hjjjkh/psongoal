@@ -13,10 +13,11 @@ const DashboardView = dynamicImport(() => import('@/components/dashboard-view'),
   loading: () => <LoadingSpinner message="加载复盘数据..." />,
 })
 
-// 【重要】禁用缓存，确保每次访问都获取最新数据
-// 这样完成行动后立即查看复盘，能显示最新的完成状态
-export const revalidate = 0
-export const dynamic = 'force-dynamic'
+// 【性能优化】使用 ISR (Incremental Static Regeneration)
+// 60秒缓存，平衡实时性和性能
+// 如果需要实时数据，可以在客户端使用 SWR 或 React Query
+export const revalidate = 60
+// 移除 force-dynamic，允许缓存
 
 export default async function DashboardPage() {
   const supabase = await createClient()
@@ -91,6 +92,8 @@ export default async function DashboardPage() {
         .in('action_id', actionIds)
         .eq('user_id', user.id)
         .order('date', { ascending: false })
+        // 【产品功能】不限制查询数量，确保所有执行记录都能被查询到
+        // 性能优化通过索引实现，而不是限制查询数量
     : { data: [] }
 
   const executionsByAction = new Map<string, Array<{ action_id: string; date: string; completed: boolean }>>()

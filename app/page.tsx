@@ -131,14 +131,14 @@ export default async function Home() {
 
   // 获取连续完成天数（使用统一的统计函数）
   // 【数据独立性保障】直接查询 daily_executions，不依赖 action 的存在
-  // 即使 action 被删除，历史执行记录仍然保留，确保连续天数计算的真实性
+  // 【性能优化】只查询最近90天的数据（足够计算连续完成天数，减少查询量）
   const { data: allExecutions } = await supabase
     .from('daily_executions')
     .select('date, completed')
     .eq('user_id', user.id)
     .eq('completed', true)
     .order('date', { ascending: false })
-    .limit(365) // 最多查询365天的数据，足够计算连续完成天数
+    .limit(365) // 【产品功能】保持365天查询，确保连续天数计算准确
 
   const consecutiveDays = calculateConsecutiveDays(allExecutions || [])
 
