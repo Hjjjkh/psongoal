@@ -52,20 +52,26 @@ function LoginForm() {
       const supabase = createClient()
 
       if (isSignUp) {
-        // 获取当前域名（客户端始终使用 window.location.origin）
-        // 这样本地开发时自动使用 http://localhost:3000
-        // 线上环境自动使用 https://psongoal.zeabur.app
-        const siteUrl = typeof window !== 'undefined' 
-          ? window.location.origin 
-          : (process.env.NEXT_PUBLIC_SITE_URL || 'https://psongoal.zeabur.app')
+        // 获取当前域名
+        // 客户端：使用 window.location.origin（自动适配本地/线上）
+        // 服务端：使用环境变量或默认值
+        let siteUrl: string
+        if (typeof window !== 'undefined') {
+          // 客户端：直接使用当前页面的 origin
+          siteUrl = window.location.origin
+        } else {
+          // 服务端：使用环境变量或默认值
+          siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://psongoal.zeabur.app'
+        }
         
-        console.log('注册时使用的回调 URL:', `${siteUrl}/auth/callback`)
+        const redirectUrl = `${siteUrl}/auth/callback`
+        console.log('注册时使用的回调 URL:', redirectUrl)
         
         const { data, error } = await supabase.auth.signUp({
           email,
           password,
           options: {
-            emailRedirectTo: `${siteUrl}/auth/callback`,
+            emailRedirectTo: redirectUrl,
           },
         })
         if (error) {

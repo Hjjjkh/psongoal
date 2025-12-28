@@ -23,8 +23,8 @@ function getSiteUrl(request: Request): string {
     return `${protocol}://${host}`
   }
 
-  // 默认值（本地开发）
-  return 'http://localhost:3000'
+  // 默认值（线上环境）
+  return 'https://psongoal.zeabur.app'
 }
 
 export async function GET(request: Request) {
