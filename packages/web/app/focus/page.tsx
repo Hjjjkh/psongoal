@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { getUserTodos } from '@/lib/todos'
 import { getCurrentAction } from '@/lib/system-state'
+import { getToday } from '@/lib/utils/date'
 import dynamicImport from 'next/dynamic'
 
 // 动态导入 FocusSpaceView，禁用 SSR 以避免 hydration 错误
@@ -36,15 +37,32 @@ export default async function FocusPage() {
   // 获取今日唯一任务 Action
   const currentAction = await getCurrentAction(user.id)
 
+  // 【修复】检查今天是否已经完成行动
+  // 如果今天已完成，不应该显示行动（与今日页面逻辑一致）
+  const today = getToday()
+  const { data: todayExecutions } = await supabase
+    .from('daily_executions')
+    .select('action_id, completed')
+    .eq('user_id', user.id)
+    .eq('date', today)
+    .eq('completed', true)
+    .limit(1)
+
+  // 如果今天已完成，清空 action（不显示）
+  const todayCompleted = !!(todayExecutions && todayExecutions.length > 0)
+  const finalAction = todayCompleted ? null : currentAction?.action || null
+  const finalGoal = todayCompleted ? null : currentAction?.goal || null
+  const finalPhase = todayCompleted ? null : currentAction?.phase || null
+
   // 获取代办列表
   const todos = await getUserTodos(user.id)
   const uncheckedTodos = todos.filter(t => !t.checked)
 
   return (
     <FocusSpaceView
-      action={currentAction?.action || null}
-      goal={currentAction?.goal || null}
-      phase={currentAction?.phase || null}
+      action={finalAction}
+      goal={finalGoal}
+      phase={finalPhase}
       todos={uncheckedTodos}
     />
   )

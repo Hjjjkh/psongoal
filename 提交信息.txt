@@ -1,0 +1,15 @@
+feat: 迁移到 Monorepo 结构，准备多平台开发和 Zeabur 部署
+
+主要更改：
+- 创建 Monorepo 目录结构（packages/web, packages/core, packages/mobile, packages/desktop, packages/miniprogram）
+- 迁移网页版代码到 packages/web
+- 配置 pnpm workspace（pnpm-workspace.yaml）
+- 添加 Zeabur 部署配置（.npmrc, packageManager）
+- 优化默认行动数量（7→3）
+- 优化页面刷新机制（revalidate: 0, router.refresh()）
+- 更新 .gitignore 支持 Monorepo 结构
+
+准备：
+- 网页版可正常部署到 Zeabur
+- 为后续多平台开发（App/exe/小程序）做好准备
+

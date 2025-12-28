@@ -76,9 +76,9 @@ export default function FocusSpaceView({
         toast.success('行动已完成！', { duration: 2000 })
         // 【优化】完成 action 后，系统会推进到下一个 action，需要重新加载页面获取最新数据
         // 使用 router.push 重新加载页面，确保获取最新的 action 状态
-        setTimeout(async () => {
-          await router.push('/focus')
-          router.refresh() // 强制刷新数据
+        // 【修复】使用 window.location 强制完整刷新，确保获取最新数据
+        setTimeout(() => {
+          window.location.href = '/focus'
         }, 1500)
       }
     } catch (error) {
