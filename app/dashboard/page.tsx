@@ -4,6 +4,7 @@ import { getSystemState } from '@/lib/system-state'
 import { generateInsights, type DayData } from '@/lib/insights'
 import { calculateConsecutiveDays } from '@/lib/utils/stats'
 import { MAX_CONSECUTIVE_DAYS_QUERY, REVIEW_DAYS_RANGE, REVIEW_HISTORY_LIMIT, STUCK_PHASE_THRESHOLD_DAYS } from '@/lib/constants/review'
+import type { Goal, Phase, Action } from '@/lib/core/types'
 import dynamicImport from 'next/dynamic'
 
 import LoadingSpinner from '@/components/loading-spinner'
@@ -40,7 +41,7 @@ export default async function DashboardPage() {
     .order('created_at', { ascending: false })
 
   // 优化：批量获取所有 phases 和 actions，减少查询次数
-  const goalIds = (goals || []).map(g => g.id)
+  const goalIds = (goals || []).map((g: Goal) => g.id)
   
   // 先获取所有 phases
   const { data: allPhases } = await supabase
@@ -49,7 +50,7 @@ export default async function DashboardPage() {
     .in('goal_id', goalIds)
     .order('order_index', { ascending: true })
 
-  const phaseIds = allPhases?.map(p => p.id) || []
+  const phaseIds = allPhases?.map((p: Phase) => p.id) || []
 
   // 批量获取所有 actions（如果有 phases）
   const { data: allActions } = phaseIds.length > 0
@@ -67,14 +68,14 @@ export default async function DashboardPage() {
   const phasesByGoal = new Map<string, typeof phases>()
   const actionsByPhase = new Map<string, typeof actions>()
 
-  phases.forEach(phase => {
+  phases.forEach((phase: Phase) => {
     if (!phasesByGoal.has(phase.goal_id)) {
       phasesByGoal.set(phase.goal_id, [])
     }
     phasesByGoal.get(phase.goal_id)!.push(phase)
   })
 
-  actions.forEach(action => {
+  actions.forEach((action: Action) => {
     if (!actionsByPhase.has(action.phase_id)) {
       actionsByPhase.set(action.phase_id, [])
     }
@@ -84,7 +85,7 @@ export default async function DashboardPage() {
   // 批量获取执行记录（用于检查卡住状态）
   // 【数据独立性保障】只查询当前存在的 action 的执行记录
   // 使用 in('action_id', actionIds) 过滤，但即使 action 被删除，历史记录仍然保留
-  const actionIds = actions.map(a => a.id)
+  const actionIds = actions.map((a: Action) => a.id)
   const { data: executionsForStuckCheck } = actionIds.length > 0
     ? await supabase
         .from('daily_executions')
@@ -97,7 +98,7 @@ export default async function DashboardPage() {
     : { data: [] }
 
   const executionsByAction = new Map<string, Array<{ action_id: string; date: string; completed: boolean }>>()
-  executionsForStuckCheck?.forEach(exec => {
+  executionsForStuckCheck?.forEach((exec: { action_id: string; date: string; completed: boolean }) => {
     if (!executionsByAction.has(exec.action_id)) {
       executionsByAction.set(exec.action_id, [])
     }
@@ -108,7 +109,7 @@ export default async function DashboardPage() {
   })
 
   // 计算每个 Goal 的进度和统计信息
-  const goalsWithStats = (goals || []).map(goal => {
+  const goalsWithStats = (goals || []).map((goal: Goal) => {
     const phases = phasesByGoal.get(goal.id) || []
     
     if (phases.length === 0) {
@@ -125,20 +126,20 @@ export default async function DashboardPage() {
     let completedActions = 0
     const stuckPhases: Array<{ phaseId: string; days: number }> = []
 
-    phases.forEach(phase => {
+    phases.forEach((phase: Phase) => {
       const actions = actionsByPhase.get(phase.id) || []
       
       if (actions.length > 0) {
         totalActions += actions.length
 
-        actions.forEach(action => {
+        actions.forEach((action: Action) => {
           if (action.completed_at) {
             completedActions++
           }
         })
 
         // 检查是否卡住
-        const firstIncompleteAction = actions.find(a => !a.completed_at)
+        const firstIncompleteAction = actions.find((a: Action) => !a.completed_at)
         if (firstIncompleteAction) {
           const executions = executionsByAction.get(firstIncompleteAction.id) || []
           const lastExecution = executions[0]
@@ -155,11 +156,11 @@ export default async function DashboardPage() {
               stuckPhases.push({ phaseId: phase.id, days: daysSince })
             }
           } else {
-            const hasCompletedAction = actions.some(a => a.completed_at)
+            const hasCompletedAction = actions.some((a: Action) => a.completed_at)
             if (hasCompletedAction) {
               const lastCompletedAction = actions
-                .filter(a => a.completed_at)
-                .sort((a, b) => {
+                .filter((a: Action) => a.completed_at)
+                .sort((a: Action, b: Action) => {
                   const dateA = new Date(a.completed_at || 0)
                   const dateB = new Date(b.completed_at || 0)
                   return dateB.getTime() - dateA.getTime()
@@ -237,12 +238,12 @@ export default async function DashboardPage() {
   // 优化：从已获取的数据中提取目标行动ID，避免重复查询
   let targetActionIds: string[] = []
   if (targetGoalId) {
-    const targetPhases = phases.filter(p => p.goal_id === targetGoalId)
+    const targetPhases = phases.filter((p: Phase) => p.goal_id === targetGoalId)
     if (targetPhases.length > 0) {
-      const phaseIds = targetPhases.map(p => p.id)
+      const phaseIds = targetPhases.map((p: Phase) => p.id)
       targetActionIds = actions
-        .filter(a => phaseIds.includes(a.phase_id))
-        .map(a => a.id)
+        .filter((a: Action) => phaseIds.includes(a.phase_id))
+        .map((a: Action) => a.id)
     }
   }
 
@@ -284,16 +285,16 @@ export default async function DashboardPage() {
     // 从查询结果中筛选当天的执行记录
     // 【重要】如果目标已确定，只统计目标内的记录（用于趋势分析）
     // 但今天完成的记录，即使不在目标内，也应该显示（因为"今日已完成"是全局的）
-    let dayExecutions = (recentExecutions || []).filter(e => e.date === dateStr)
+    let dayExecutions = (recentExecutions || []).filter((e: { date: string }) => e.date === dateStr)
     
     // 如果目标已确定，且不是今天，只统计目标内的记录
     // 【类型安全】action_id 可能为 null（已删除的 action），需要先检查
     if (targetActionIds.length > 0 && dateStr !== todayStr && targetGoalId) {
       // 获取当前目标名称，用于匹配已删除 action 的记录
-      const currentGoal = goals?.find(g => g.id === targetGoalId)
+      const currentGoal = goals?.find((g: Goal) => g.id === targetGoalId)
       const currentGoalName = currentGoal?.name
       
-      dayExecutions = dayExecutions.filter(e => {
+      dayExecutions = dayExecutions.filter((e: { action_id: string | null; goal_name?: string }) => {
         if (e.action_id === null) {
           // 已删除的 action，根据 goal_name 判断是否属于当前目标
           if (currentGoalName && e.goal_name === currentGoalName) {
@@ -306,7 +307,7 @@ export default async function DashboardPage() {
     }
     // 如果是今天，保留所有记录（因为"今日已完成"是全局的，不限于目标）
     
-    const completedCount = dayExecutions.filter(e => e.completed).length
+    const completedCount = dayExecutions.filter((e: { completed: boolean }) => e.completed).length
     let totalCount = dayExecutions.length
     
     // 【重要】如果今天是今天，且有当前行动，但没有执行记录，应该认为今天有行动但未完成
@@ -321,7 +322,7 @@ export default async function DashboardPage() {
     // 重要：只统计 completed=true 且 difficulty/energy 非 null 的数据
     // 根据"每日唯一行动"设计，每天应该只有一条完成记录，所以直接取第一条
     const completedExecution = dayExecutions.find(
-      e => e.completed && e.difficulty !== null && e.energy !== null
+      (e: { completed: boolean; difficulty: number | null; energy: number | null }) => e.completed && e.difficulty !== null && e.energy !== null
     )
     const avgDifficulty = completedExecution?.difficulty ?? null
     const avgEnergy = completedExecution?.energy ?? null
@@ -410,10 +411,10 @@ export default async function DashboardPage() {
   
   if (targetActionIds.length > 0 && targetGoalId) {
     // 获取当前目标名称，用于匹配已删除 action 的记录
-    const currentGoal = goals?.find(g => g.id === targetGoalId)
+    const currentGoal = goals?.find((g: Goal) => g.id === targetGoalId)
     const currentGoalName = currentGoal?.name
     
-    filteredHistory = filteredHistory.filter(exec => {
+    filteredHistory = filteredHistory.filter((exec: ExecutionRecord) => {
       // 如果 action_id 在目标列表中，保留
       if (exec.action_id && targetActionIds.includes(exec.action_id)) {
         return true

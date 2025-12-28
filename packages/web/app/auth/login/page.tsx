@@ -178,7 +178,7 @@ function LoginForm() {
                 id="email"
                 type="email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
                 required
                 placeholder="your@email.com"
               />
@@ -189,7 +189,7 @@ function LoginForm() {
                 id="password"
                 type="password"
                 value={password}
-                onChange={(e) => {
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                   setPassword(e.target.value)
                   setPasswordError('')
                 }}

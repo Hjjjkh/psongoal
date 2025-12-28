@@ -158,7 +158,7 @@ export default async function TodayPage() {
               .eq('goal_id', goal.id)
 
             if (goalPhases && goalPhases.length > 0) {
-              const phaseIds = goalPhases.map(p => p.id)
+              const phaseIds = goalPhases.map((p: { id: string }) => p.id)
               const { data: allActions } = await supabase
                 .from('actions')
                 .select('id, completed_at, order_index')
@@ -166,8 +166,8 @@ export default async function TodayPage() {
 
               if (allActions && action) {
                 const totalActions = allActions.length
-                const completedActions = allActions.filter(a => a.completed_at).length
-                const currentActionIndex = allActions.findIndex(a => a.id === action!.id)
+                const completedActions = allActions.filter((a: { completed_at: string | null }) => a.completed_at).length
+                const currentActionIndex = allActions.findIndex((a: { id: string }) => a.id === action!.id)
                 
                 goalProgress = {
                   total: totalActions,
@@ -371,7 +371,7 @@ export default async function TodayPage() {
         .eq('goal_id', goal.id)
 
       if (goalPhases && goalPhases.length > 0) {
-        const phaseIds = goalPhases.map(p => p.id)
+        const phaseIds = goalPhases.map((p: { id: string }) => p.id)
         const { data: allActions } = await supabase
           .from('actions')
           .select('id, completed_at, order_index')
@@ -379,8 +379,8 @@ export default async function TodayPage() {
 
         if (allActions) {
           const totalActions = allActions.length
-          const completedActions = allActions.filter(a => a.completed_at).length
-          const currentActionIndex = action ? allActions.findIndex(a => a.id === action.id) : -1
+          const completedActions = allActions.filter((a: { completed_at: string | null }) => a.completed_at).length
+          const currentActionIndex = action ? allActions.findIndex((a: { id: string }) => a.id === action.id) : -1
           
           return {
             total: totalActions,

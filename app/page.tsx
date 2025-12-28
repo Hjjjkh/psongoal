@@ -94,7 +94,7 @@ export default async function Home() {
             .eq('goal_id', currentGoal.id)
 
           if (phases && phases.length > 0) {
-            const phaseIds = phases.map(p => p.id)
+            const phaseIds = phases.map((p: { id: string }) => p.id)
             const { data: allActions } = await supabase
               .from('actions')
               .select('id, completed_at')
@@ -102,7 +102,7 @@ export default async function Home() {
 
             if (allActions) {
               const totalActions = allActions.length
-              const completedActions = allActions.filter(a => a.completed_at).length
+              const completedActions = allActions.filter((a: { completed_at: string | null }) => a.completed_at).length
               goalProgress = {
                 total: totalActions,
                 completed: completedActions,
@@ -111,7 +111,7 @@ export default async function Home() {
 
               // 检查今天是否已完成（使用已获取的行动ID）
               // 【数据独立性保障】直接查询 daily_executions，不依赖 action 的存在
-              const actionIds = allActions.map(a => a.id)
+              const actionIds = allActions.map((a: { id: string }) => a.id)
               const { data: todayExecution } = await supabase
                 .from('daily_executions')
                 .select('completed')

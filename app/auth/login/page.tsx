@@ -52,9 +52,27 @@ function LoginForm() {
       const supabase = createClient()
 
       if (isSignUp) {
+        // 获取当前域名
+        // 客户端：使用 window.location.origin（自动适配本地/线上）
+        // 服务端：使用环境变量或默认值
+        let siteUrl: string
+        if (typeof window !== 'undefined') {
+          // 客户端：直接使用当前页面的 origin
+          siteUrl = window.location.origin
+        } else {
+          // 服务端：使用环境变量或默认值
+          siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://psongoal.zeabur.app'
+        }
+        
+        const redirectUrl = `${siteUrl}/auth/callback`
+        console.log('注册时使用的回调 URL:', redirectUrl)
+        
         const { data, error } = await supabase.auth.signUp({
           email,
           password,
+          options: {
+            emailRedirectTo: redirectUrl,
+          },
         })
         if (error) {
           console.error('Sign up error:', error)
@@ -160,7 +178,7 @@ function LoginForm() {
                 id="email"
                 type="email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)}
                 required
                 placeholder="your@email.com"
               />
@@ -171,7 +189,7 @@ function LoginForm() {
                 id="password"
                 type="password"
                 value={password}
-                onChange={(e) => {
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                   setPassword(e.target.value)
                   setPasswordError('')
                 }}

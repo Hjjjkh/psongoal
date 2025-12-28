@@ -1378,7 +1378,7 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
     if (oldIndex === -1 || newIndex === -1) return
 
     const newPhases = arrayMove(goal.phases, oldIndex, newIndex)
-    const phaseIds = newPhases.map(p => p.id)
+    const phaseIds = newPhases.map((p: Phase) => p.id)
 
     // 【修复】保存原始状态，用于错误恢复
     const originalPhases = [...goal.phases]
@@ -1477,7 +1477,7 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
     if (oldIndex === -1 || newIndex === -1) return
 
     const newActions = arrayMove(phase.actions, oldIndex, newIndex)
-    const actionIds = newActions.map(a => a.id)
+    const actionIds = newActions.map((a: Action) => a.id)
 
     // 【修复】保存原始状态，用于错误恢复
     const originalActions = [...phase.actions]
@@ -1815,7 +1815,7 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
                       <DndContext
                         sensors={sensors}
                         collisionDetection={closestCenter}
-                        onDragEnd={(event) => handlePhaseDragEnd(event, goal.id)}
+                        onDragEnd={(event: DragEndEvent) => handlePhaseDragEnd(event, goal.id)}
                       >
                         <SortableContext
                           items={goal.phases.map(p => p.id)}
@@ -1867,7 +1867,7 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
                                       <DndContext
                                         sensors={sensors}
                                         collisionDetection={closestCenter}
-                                        onDragEnd={(event) => handleActionDragEnd(event, phase.id)}
+                                        onDragEnd={(event: DragEndEvent) => handleActionDragEnd(event, phase.id)}
                                       >
                                         <SortableContext
                                           items={phase.actions.map(a => a.id)}

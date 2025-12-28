@@ -891,7 +891,7 @@ export default function GoalTemplateSelector({ onSelect, selectMode = false, sel
     <div className="space-y-4">
       {/* 工具栏 */}
       <div className="flex items-center gap-2 flex-wrap">
-        <Select value={category} onValueChange={(v) => setCategory(v as any)}>
+        <Select value={category} onValueChange={(v: string) => setCategory(v as 'all' | 'health' | 'learning' | 'project' | 'custom')}>
           <SelectTrigger className="w-[180px]">
             <SelectValue placeholder="选择分类" />
           </SelectTrigger>
@@ -1179,7 +1179,7 @@ export default function GoalTemplateSelector({ onSelect, selectMode = false, sel
       )}
 
       {/* 创建对话框 */}
-      <Dialog open={showCreateDialog} onOpenChange={(open) => {
+      <Dialog open={showCreateDialog} onOpenChange={(open: boolean) => {
         setShowCreateDialog(open)
         if (!open) {
           // 关闭对话框时重置状态
@@ -1204,8 +1204,8 @@ export default function GoalTemplateSelector({ onSelect, selectMode = false, sel
               <Label>分类</Label>
               <Select
                 value={newTemplate.category}
-                onValueChange={(v) => {
-                  setNewTemplate({ ...newTemplate, category: v as any })
+                onValueChange={(v: string) => {
+                  setNewTemplate({ ...newTemplate, category: v as 'health' | 'learning' | 'project' | 'custom' })
                   if (v !== 'custom') {
                     setCustomCategoryName('')
                   }
@@ -1470,8 +1470,8 @@ export default function GoalTemplateSelector({ onSelect, selectMode = false, sel
                 <Label>分类</Label>
                 <Select
                   value={editingTemplate.category}
-                  onValueChange={(v) => {
-                    setEditingTemplate({ ...editingTemplate, category: v as any })
+                  onValueChange={(v: string) => {
+                    setEditingTemplate({ ...editingTemplate, category: v as 'health' | 'learning' | 'project' | 'custom' })
                     if (v !== 'custom') {
                       setCustomCategoryName('')
                     }
