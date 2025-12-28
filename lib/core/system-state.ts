@@ -306,16 +306,61 @@ export async function completeActionAndAdvance(
   }
 
   // 2. 原子步骤 a：记录今日执行（用于统计与复盘）
+  // 【数据独立性保障】获取 action 的快照信息，即使 action 被删除，历史数据仍然保留
+  const { data: actionInfo } = await supabase
+    .from('actions')
+    .select(`
+      id,
+      title,
+      definition,
+      phases!inner(
+        id,
+        name,
+        goals!inner(
+          id,
+          name
+        )
+      )
+    `)
+    .eq('id', actionId)
+    .single()
+
+  const executionData: any = {
+    action_id: actionId,
+    user_id: userId,
+    date: today,
+    completed: true,
+    difficulty,
+    energy,
+  }
+
+  // 填充快照字段，确保即使 action 被删除，历史数据仍然完整
+  if (actionInfo) {
+    executionData.action_title = actionInfo.title
+    executionData.action_definition = actionInfo.definition
+    
+    // 处理 phases 数据（Supabase join 可能返回数组或单个对象）
+    const phase = Array.isArray(actionInfo.phases) 
+      ? actionInfo.phases[0] 
+      : actionInfo.phases
+    
+    if (phase) {
+      executionData.phase_name = phase.name
+      
+      // 处理 goals 数据（Supabase join 可能返回数组或单个对象）
+      const goal = Array.isArray(phase.goals)
+        ? phase.goals[0]
+        : phase.goals
+      
+      if (goal) {
+        executionData.goal_name = goal.name
+      }
+    }
+  }
+
   const { error: executionError } = await supabase
     .from('daily_executions')
-    .upsert({
-      action_id: actionId,
-      user_id: userId,
-      date: today,
-      completed: true,
-      difficulty,
-      energy,
-    }, {
+    .upsert(executionData, {
       onConflict: 'action_id,date,user_id'
     })
 

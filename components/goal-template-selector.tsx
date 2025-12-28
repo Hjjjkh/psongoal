@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
-import { Plus, Trash2, Edit2, Target, Sparkles, ChevronUp, ChevronDown, GripVertical, Copy, Search, X } from 'lucide-react'
+import { Plus, Trash2, Edit2, Target, Sparkles, ChevronUp, ChevronDown, GripVertical, Search, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { handleApiResponse } from '@/lib/utils'
 
@@ -465,79 +465,6 @@ export default function GoalTemplateSelector({ onSelect, selectMode = false, sel
     }
   }
 
-  // 复制模板
-  const handleCopyTemplate = async (template: GoalTemplate) => {
-    const copyName = `${template.name} (副本)`
-    
-    // 检查是否已存在同名模板
-    const existingTemplate = templates.find(t => t.name === copyName && t.category === template.category)
-    if (existingTemplate) {
-      toast.error('模板已存在', {
-        description: `模板"${copyName}"已存在，请先删除或重命名`,
-      })
-      return
-    }
-
-    try {
-      // 获取模板的完整数据（包括行动）
-      const response = await fetch(`/api/goal-templates/${template.id}`)
-      const result = await handleApiResponse<{ template: GoalTemplate }>(response, '获取模板失败')
-      
-      if (!result.success || !result.data) {
-        return
-      }
-
-      const fullTemplate = result.data.template
-      
-      // 创建新模板（复制，支持多阶段）
-      const templateWithPhases = fullTemplate as any
-      const createBody = templateWithPhases.phases && Array.isArray(templateWithPhases.phases) && templateWithPhases.phases.length > 0
-        ? {
-            category: fullTemplate.category,
-            name: copyName,
-            description: fullTemplate.description,
-            phases: templateWithPhases.phases.map((phase: any) => ({
-              name: phase.name,
-              description: phase.description || null,
-              actions: (phase.actions || []).map((action: any) => ({
-                title_template: action.title_template,
-                definition: action.definition,
-                estimated_time: action.estimated_time,
-              })),
-            })),
-          }
-        : {
-          category: fullTemplate.category,
-          name: copyName,
-          phase_name: fullTemplate.phase_name,
-          phase_description: fullTemplate.phase_description,
-          description: fullTemplate.description,
-          actions: fullTemplate.actions?.map(action => ({
-            title_template: action.title_template,
-            definition: action.definition,
-            estimated_time: action.estimated_time,
-          })) || [],
-          }
-
-      const createResponse = await fetch('/api/goal-templates', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(createBody),
-      })
-
-      const createResult = await handleApiResponse<{ template: GoalTemplate }>(createResponse, '复制模板失败')
-
-      if (createResult.success && createResult.data) {
-        toast.success('模板已复制', {
-          description: `已创建模板"${copyName}"`,
-        })
-        loadTemplates(true)
-      }
-    } catch (error) {
-      // handleApiResponse 已处理错误
-    }
-  }
-
   // 打开删除确认对话框
   const handleDeleteClick = (template: GoalTemplate) => {
     setDeletingTemplate(template)
@@ -582,6 +509,8 @@ export default function GoalTemplateSelector({ onSelect, selectMode = false, sel
         if (!result.success) {
           // 错误已由 handleApiResponse 显示
           console.error('Failed to delete template:', result.error)
+          // 重置状态，确保UI正常显示
+          setIsDeleting(false)
           // 保持对话框打开，让用户看到错误
           return
         }
@@ -616,6 +545,7 @@ export default function GoalTemplateSelector({ onSelect, selectMode = false, sel
         // 删除失败，保持对话框打开
         console.error('Failed to delete template:', result.error)
         // 错误已由 handleApiResponse 显示
+        // 注意：状态会在 finally 块中重置，这里不需要手动重置
       }
     } catch (error) {
       console.error('Error deleting template:', error)
@@ -1100,19 +1030,6 @@ export default function GoalTemplateSelector({ onSelect, selectMode = false, sel
                       </div>
                     </div>
                     <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleCopyTemplate(template)
-                        }}
-                        className="h-7 w-7 p-0"
-                        aria-label="复制模板"
-                        title="复制模板"
-                      >
-                        <Copy className="w-3.5 h-3.5" aria-hidden="true" />
-                      </Button>
                       {!template.is_system && (
                         <Button
                           variant="ghost"

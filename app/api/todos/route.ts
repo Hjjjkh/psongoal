@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getUserTodos, createTodo, clearCheckedTodos } from '@/lib/todos'
+import { VALIDATION_LIMITS, ERROR_MESSAGES } from '@/lib/constants/validation'
 
 /**
  * 获取代办事项列表
@@ -50,23 +51,27 @@ export async function POST(request: NextRequest) {
     const { content } = body
 
     if (!content || typeof content !== 'string' || content.trim().length === 0) {
-      return NextResponse.json({ error: 'Content is required' }, { status: 400 })
+      return NextResponse.json({ error: ERROR_MESSAGES.CONTENT_REQUIRED }, { status: 400 })
     }
 
-    if (content.trim().length > 500) {
-      return NextResponse.json({ error: 'Content too long (max 500 characters)' }, { status: 400 })
+    if (content.trim().length > VALIDATION_LIMITS.MAX_TODO_CONTENT_LENGTH) {
+      return NextResponse.json({ 
+        error: ERROR_MESSAGES.CONTENT_TOO_LONG,
+        details: `Maximum length is ${VALIDATION_LIMITS.MAX_TODO_CONTENT_LENGTH} characters`
+      }, { status: 400 })
     }
 
-    console.log('Creating todo for user:', user.id, 'content:', content.substring(0, 50))
-    
     let todo
     try {
       todo = await createTodo(user.id, content)
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error in createTodo:', error)
       
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      const errorCode = (error as { code?: string })?.code
+      
       // 如果是表不存在错误
-      if (error.code === '42P01' || error.message?.includes('does not exist') || error.message?.includes('表不存在')) {
+      if (errorCode === '42P01' || errorMessage?.includes('does not exist') || errorMessage?.includes('表不存在')) {
         return NextResponse.json(
           { error: '数据库表不存在，请运行迁移脚本：supabase/migration_add_todos.sql' },
           { status: 500 }
@@ -74,7 +79,7 @@ export async function POST(request: NextRequest) {
       }
       
       // 如果是权限错误（RLS 策略问题）
-      if (error.code === '42501' || error.message?.includes('permission denied') || error.message?.includes('权限')) {
+      if (errorCode === '42501' || errorMessage?.includes('permission denied') || errorMessage?.includes('权限')) {
         return NextResponse.json(
           { error: '数据库权限错误，请检查 RLS 策略配置' },
           { status: 500 }
@@ -82,14 +87,13 @@ export async function POST(request: NextRequest) {
       }
       
       // 返回具体错误信息
-      const errorMessage = error.message || '创建代办失败，请检查数据库连接和表结构'
+      const finalErrorMessage = errorMessage || '创建代办失败，请检查数据库连接和表结构'
       return NextResponse.json(
-        { error: errorMessage },
+        { error: finalErrorMessage },
         { status: 500 }
       )
     }
 
-    console.log('Todo created successfully:', todo.id)
     return NextResponse.json({ success: true, data: todo })
   } catch (error) {
     console.error('Error creating todo:', error)

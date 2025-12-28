@@ -62,7 +62,7 @@ export async function POST() {
         .from('goal_templates')
         .delete()
         .in('id', existingIds)
-      console.log(`Deleted ${existingTemplates.length} old system templates`)
+      // 已删除旧的系统模板
     }
 
     // 创建系统模板（支持多阶段 - 为每个阶段创建独立模板）

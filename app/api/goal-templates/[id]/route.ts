@@ -114,8 +114,6 @@ export async function DELETE(
 
     const { id } = await params
     
-    console.log('DELETE request for template:', { id, type: typeof id })
-    
     if (!id || typeof id !== 'string') {
       console.error('Invalid template ID:', id)
       return NextResponse.json(
@@ -133,12 +131,7 @@ export async function DELETE(
       .or(`user_id.eq.${user.id},is_system.eq.true`)
       .maybeSingle()
 
-    console.log('Template check result:', {
-      id,
-      found: !!template,
-      error: checkError,
-      template: template ? { id: template.id, name: template.name, is_system: template.is_system, user_id: template.user_id } : null
-    })
+    // 验证模板是否存在和权限
 
     if (checkError) {
       console.error('Error checking template:', checkError)
@@ -191,7 +184,7 @@ export async function DELETE(
 
       if (!stillExists) {
         // 模板已经被删除（可能是级联删除或其他原因）
-        console.log('Template was deleted (verified after deleteGoalTemplate returned false)')
+        // 模板已被删除（可能是级联删除）
         return NextResponse.json({ 
           success: true,
           message: 'Template deleted successfully'

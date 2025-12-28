@@ -238,6 +238,7 @@ export function generateInsights(context: InsightContext): Insight[] {
   })
 
   // 7. 今天状态提醒
+  // 【重要】只有在今天未完成且有当前行动时才显示
   if (!todayCompleted && hasCurrentAction) {
     insights.push({
       type: 'info',
@@ -245,6 +246,14 @@ export function generateInsights(context: InsightContext): Insight[] {
       description: '今天还没有完成行动，快去完成今日行动保持连续记录！',
       action: '去完成今日行动',
       priority: 'high',
+    })
+  } else if (todayCompleted) {
+    // 今天已完成，给出鼓励
+    insights.push({
+      type: 'success',
+      title: '今日已完成',
+      description: '🎉 今天你已经完成了行动，继续保持这个节奏！',
+      priority: 'low',
     })
   }
 

@@ -16,10 +16,13 @@ export default function LoadingSpinner({
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center">
-      <div className="text-center space-y-2">
-        <div className={`animate-spin rounded-full border-b-2 border-primary mx-auto ${sizeClasses[size]}`}></div>
-        <p className="text-sm text-muted-foreground">{message}</p>
+    <div className="min-h-screen flex items-center justify-center bg-background/80 backdrop-blur-sm">
+      <div className="text-center space-y-4">
+        <div className="relative">
+          <div className={`animate-spin rounded-full border-4 border-primary/20 mx-auto ${sizeClasses[size]}`}></div>
+          <div className={`animate-spin rounded-full border-4 border-transparent border-t-primary absolute top-0 left-1/2 -translate-x-1/2 ${sizeClasses[size]}`}></div>
+        </div>
+        <p className="text-sm text-muted-foreground animate-pulse">{message}</p>
       </div>
     </div>
   )

@@ -42,10 +42,18 @@ export default function FocusSpaceView({
   const [isAddingTodo, setIsAddingTodo] = useState(false)
   const [currentTodos, setCurrentTodos] = useState<Todo[]>(todos) // 直接使用 props 作为初始值
 
-  // 初始化 todos（直接使用 props，无需 mounted 状态）
+  // 【优化】同步 todos 状态，确保 props 变化时更新本地状态
   useEffect(() => {
     setCurrentTodos(todos)
   }, [todos])
+
+  // 【优化】当 action 完成或被删除后，重置计时器选择状态
+  useEffect(() => {
+    if (!action && selectedTaskType === 'action') {
+      setSelectedTaskType(null)
+      setSelectedTodoId(null)
+    }
+  }, [action, selectedTaskType])
 
   // 标记Action完成
   const handleCompleteAction = async () => {
@@ -66,9 +74,10 @@ export default function FocusSpaceView({
       
       if (result.success) {
         toast.success('行动已完成！', { duration: 2000 })
-        // 刷新页面以更新状态
+        // 【优化】完成 action 后，系统会推进到下一个 action，需要重新加载页面获取最新数据
+        // 使用 router.push 重新加载页面，确保获取最新的 action 状态
         setTimeout(() => {
-          router.refresh()
+          router.push('/focus')
         }, 1500)
       }
     } catch (error) {
@@ -139,11 +148,22 @@ export default function FocusSpaceView({
       
       if (result.success) {
         // 勾选后直接删除（完成=消失）
-        await fetch(`/api/todos/${todoId}`, {
+        const deleteResponse = await fetch(`/api/todos/${todoId}`, {
           method: 'DELETE',
         })
+        
+        // 【优化】更新本地状态，同时重置计时器选择（如果选中的是这个 todo）
         setCurrentTodos(currentTodos.filter(t => t.id !== todoId))
-        toast.success('代办已处理', { duration: 2000 })
+        if (selectedTodoId === todoId) {
+          setSelectedTaskType(null)
+          setSelectedTodoId(null)
+        }
+        
+        if (deleteResponse.ok) {
+          toast.success('代办已处理', { duration: 2000 })
+        } else {
+          toast.success('代办已标记完成', { duration: 2000 })
+        }
       }
     } catch (error) {
       console.error('Error completing todo:', error)
@@ -160,7 +180,12 @@ export default function FocusSpaceView({
       const result = await handleApiResponse(response, '删除失败')
       
       if (result.success) {
+        // 【优化】更新本地状态，同时重置计时器选择（如果选中的是这个 todo）
         setCurrentTodos(currentTodos.filter(t => t.id !== todoId))
+        if (selectedTodoId === todoId) {
+          setSelectedTaskType(null)
+          setSelectedTodoId(null)
+        }
       }
     } catch (error) {
       console.error('Error ignoring todo:', error)

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -67,7 +67,6 @@ function SortablePhaseItem({
   isPhaseSelected,
   isPhaseExpanded,
   isBatchSelectMode,
-  isDev,
   onTogglePhase,
   onTogglePhaseSelection,
   onAddAction,
@@ -79,7 +78,6 @@ function SortablePhaseItem({
   isPhaseSelected: boolean
   isPhaseExpanded: boolean
   isBatchSelectMode: boolean
-  isDev: boolean
   onTogglePhase: (id: string) => void
   onTogglePhaseSelection: (id: string) => void
   onAddAction: () => void
@@ -109,11 +107,12 @@ function SortablePhaseItem({
     >
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          {isBatchSelectMode && isDev && (
+          {isBatchSelectMode && (
             <Checkbox
               checked={isPhaseSelected}
               onCheckedChange={() => onTogglePhaseSelection(phase.id)}
               className="flex-shrink-0"
+              aria-label="选择阶段"
             />
           )}
           <button
@@ -146,14 +145,16 @@ function SortablePhaseItem({
             <Plus className="w-4 h-4 mr-1" />
             添加行动
           </Button>
-          {isDev && !isBatchSelectMode && (
+          {!isBatchSelectMode && (
             <Button
               size="sm"
               variant="ghost"
               onClick={() => onDeletePhase(phase.id)}
               className="text-muted-foreground hover:text-destructive"
+              aria-label="删除阶段"
+              title="删除阶段"
             >
-              <Trash2 className="w-3 h-3" />
+              <Trash2 className="w-3 h-3" aria-hidden="true" />
             </Button>
           )}
         </div>
@@ -168,7 +169,6 @@ function SortableActionItem({
   phaseId,
   isActionSelected,
   isBatchSelectMode,
-  isDev,
   onToggleActionSelection,
   onDeleteAction,
   onDragEnd,
@@ -177,7 +177,6 @@ function SortableActionItem({
   phaseId: string
   isActionSelected: boolean
   isBatchSelectMode: boolean
-  isDev: boolean
   onToggleActionSelection: (id: string) => void
   onDeleteAction: (id: string) => void
   onDragEnd: (event: DragEndEvent, phaseId: string) => void
@@ -204,13 +203,14 @@ function SortableActionItem({
       className={`bg-muted p-3 rounded flex items-start justify-between gap-2 ${isActionSelected ? 'ring-2 ring-primary' : ''}`}
     >
       <div className="flex items-center gap-2 flex-1">
-        {isBatchSelectMode && isDev && (
-          <Checkbox
-            checked={isActionSelected}
-            onCheckedChange={() => onToggleActionSelection(action.id)}
-            className="flex-shrink-0"
-          />
-        )}
+        {isBatchSelectMode && (
+            <Checkbox
+              checked={isActionSelected}
+              onCheckedChange={() => onToggleActionSelection(action.id)}
+              className="flex-shrink-0"
+              aria-label="选择行动"
+            />
+          )}
         <GripVertical
           className="w-4 h-4 text-muted-foreground cursor-grab active:cursor-grabbing flex-shrink-0"
           {...attributes}
@@ -230,14 +230,16 @@ function SortableActionItem({
           </p>
         </div>
       </div>
-      {isDev && !isBatchSelectMode && (
+      {!isBatchSelectMode && (
         <Button
           size="sm"
           variant="ghost"
           onClick={() => onDeleteAction(action.id)}
           className="text-muted-foreground hover:text-destructive shrink-0"
+          aria-label="删除行动"
+          title="删除行动"
         >
-          <Trash2 className="w-3 h-3" />
+          <Trash2 className="w-3 h-3" aria-hidden="true" />
         </Button>
       )}
     </div>
@@ -249,6 +251,25 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
   const [goals, setGoals] = useState(initialGoals)
   const [expandedGoals, setExpandedGoals] = useState<Set<string>>(new Set())
   const [expandedPhases, setExpandedPhases] = useState<Set<string>>(new Set())
+  
+  // 排序操作状态管理（防止并发请求）
+  const [isReorderingPhases, setIsReorderingPhases] = useState(false)
+  const [isReorderingActions, setIsReorderingActions] = useState(false)
+  // 【优化】分离防抖定时器，避免阶段和行动排序互相干扰
+  const phaseReorderTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const actionReorderTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
+  // 清理防抖定时器（组件卸载时）
+  useEffect(() => {
+    return () => {
+      if (phaseReorderTimeoutRef.current) {
+        clearTimeout(phaseReorderTimeoutRef.current)
+      }
+      if (actionReorderTimeoutRef.current) {
+        clearTimeout(actionReorderTimeoutRef.current)
+      }
+    }
+  }, [])
 
   // Goal 创建对话框
   const [isGoalDialogOpen, setIsGoalDialogOpen] = useState(false)
@@ -681,21 +702,38 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
 
       const result = await handleApiResponse<{ id: string; goal_id: string; name: string; description: string | null; order_index: number }>(response, '创建失败，请重试')
 
-      if (result.success) {
+      if (result.success && result.data) {
+        // 【优化】乐观更新：立即添加到UI
+        const newPhase = {
+          id: result.data.id,
+          goal_id: result.data.goal_id,
+          name: result.data.name,
+          description: result.data.description,
+          order_index: result.data.order_index,
+          created_at: new Date().toISOString(),
+          actions: []
+        }
+        
+        setGoals(prev => prev.map(g => 
+          g.id === selectedGoalId
+            ? { ...g, phases: [...g.phases, newPhase] }
+            : g
+        ))
+        
         toast.success('阶段创建成功')
         
         // 保存新创建的阶段ID，用于后续打开行动对话框
-        const newPhaseId = result.data?.id
+        const newPhaseId = result.data.id
         
-        router.refresh()
         setIsPhaseDialogOpen(false)
         
         // 检查目标是否有行动，如果没有，自动打开行动对话框
-        const goal = goals.find(g => g.id === selectedGoalId)
-        const hasActions = goal?.phases?.some(p => p.actions && p.actions.length > 0) ?? false
+        // 使用更新后的goals状态（包含新创建的阶段）
+        const updatedGoal = goals.find(g => g.id === selectedGoalId)
+        const hasActions = updatedGoal?.phases?.some(p => p.actions && p.actions.length > 0) ?? false
         
         if (!hasActions && newPhaseId) {
-          // 等待页面刷新后，自动打开行动对话框
+          // 直接打开行动对话框（不需要等待刷新）
           setTimeout(() => {
             setSelectedPhaseId(newPhaseId)
             setIsActionDialogOpen(true)
@@ -757,11 +795,38 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
         }),
       })
 
-      const result = await handleApiResponse(response, '创建失败，请重试')
+      const result = await handleApiResponse<{ id: string; phase_id: string; title: string; definition: string; estimated_time: number | null; order_index: number; completed_at: string | null }>(response, '创建失败，请重试')
 
-      if (result.success) {
+      if (result.success && result.data) {
+        // 【优化】乐观更新：立即添加到UI
+        const newAction = {
+          id: result.data.id,
+          phase_id: result.data.phase_id,
+          title: result.data.title,
+          definition: result.data.definition,
+          estimated_time: result.data.estimated_time,
+          order_index: result.data.order_index,
+          completed_at: result.data.completed_at,
+          created_at: new Date().toISOString()
+        }
+        
+        const goal = goals.find(g => g.phases.some(p => p.id === selectedPhaseId))
+        if (goal) {
+          setGoals(prev => prev.map(g => 
+            g.id === goal.id
+              ? {
+                  ...g,
+                  phases: g.phases.map(p =>
+                    p.id === selectedPhaseId
+                      ? { ...p, actions: [...p.actions, newAction] }
+                      : p
+                  )
+                }
+              : g
+          ))
+        }
+        
         toast.success('行动创建成功')
-        router.refresh()
         setIsActionDialogOpen(false)
         setSelectedPhaseId(null)
         setActionTitle('')
@@ -958,13 +1023,8 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
     })
   }, [])
 
-  // DEV ONLY: 删除功能（测试级删除）
-  // 使用 useState 确保服务器和客户端一致，避免水合错误
-  const [isDev, setIsDev] = useState(false)
-  
-  useEffect(() => {
-    setIsDev(process.env.NODE_ENV === 'development')
-  }, [])
+  // 批量操作功能已启用，可用于生产环境
+  // 注意：错误信息仍只在开发环境显示（错误边界中）
 
   // 使用 useMemo 缓存查找结果，优化性能
   const goalMap = useMemo(() => {
@@ -996,8 +1056,6 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
   }, [goals])
 
   const handleDeleteGoal = useCallback((goalId: string) => {
-    if (!isDev) return
-    
     const goal = goalMap.get(goalId)
     if (goal) {
       setDeleteType('goal')
@@ -1005,11 +1063,9 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
       setDeleteName(goal.name || '未命名目标')
       setDeleteConfirmOpen(true)
     }
-  }, [isDev, goalMap])
+  }, [goalMap])
 
   const handleDeletePhase = useCallback((phaseId: string) => {
-    if (!isDev) return
-    
     const phaseData = phaseMap.get(phaseId)
     if (phaseData) {
     setDeleteType('phase')
@@ -1017,11 +1073,9 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
       setDeleteName(phaseData.phase.name || '未命名阶段')
     setDeleteConfirmOpen(true)
   }
-  }, [isDev, phaseMap])
+  }, [phaseMap])
 
   const handleDeleteAction = useCallback((actionId: string) => {
-    if (!isDev) return
-    
     const actionData = actionMap.get(actionId)
     if (actionData) {
     setDeleteType('action')
@@ -1029,24 +1083,65 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
       setDeleteName(actionData.action.title || '未命名行动')
     setDeleteConfirmOpen(true)
   }
-  }, [isDev, actionMap])
+  }, [actionMap])
 
   const confirmDelete = async () => {
     if (!deleteId || !deleteType) return
 
+    // 【优化】保存原始状态，用于错误恢复
+    const originalGoals = [...goals]
+
+    // 立即更新本地状态（乐观更新）
+    if (deleteType === 'goal') {
+      setGoals(prev => prev.filter(g => g.id !== deleteId))
+    } else if (deleteType === 'phase') {
+      const goal = goals.find(g => g.phases.some(p => p.id === deleteId))
+      if (goal) {
+        setGoals(prev => prev.map(g => 
+          g.id === goal.id
+            ? { ...g, phases: g.phases.filter(p => p.id !== deleteId) }
+            : g
+        ))
+      }
+    } else if (deleteType === 'action') {
+      const goal = goals.find(g => g.phases.some(p => p.actions.some(a => a.id === deleteId)))
+      if (goal) {
+        const phase = goal.phases.find(p => p.actions.some(a => a.id === deleteId))
+        if (phase) {
+          setGoals(prev => prev.map(g => 
+            g.id === goal.id
+              ? {
+                  ...g,
+                  phases: g.phases.map(p =>
+                    p.id === phase.id
+                      ? { ...p, actions: p.actions.filter(a => a.id !== deleteId) }
+                      : p
+                  )
+                }
+              : g
+          ))
+        }
+      }
+    }
+
+    // 关闭对话框
+    setDeleteConfirmOpen(false)
+    const tempDeleteId = deleteId
+    const tempDeleteType = deleteType
+    const tempSuccessMessage = deleteType === 'goal' ? '目标已删除' : deleteType === 'phase' ? '阶段已删除' : '行动已删除'
+    setDeleteType(null)
+    setDeleteId(null)
+    setDeleteName('')
+
     try {
       let endpoint = ''
-      let successMessage = ''
       
-      if (deleteType === 'goal') {
-        endpoint = `/api/goals/${deleteId}`
-        successMessage = '目标已删除'
-      } else if (deleteType === 'phase') {
-        endpoint = `/api/phases/${deleteId}`
-        successMessage = '阶段已删除'
-      } else if (deleteType === 'action') {
-        endpoint = `/api/actions/${deleteId}`
-        successMessage = '行动已删除'
+      if (tempDeleteType === 'goal') {
+        endpoint = `/api/goals/${tempDeleteId}`
+      } else if (tempDeleteType === 'phase') {
+        endpoint = `/api/phases/${tempDeleteId}`
+      } else if (tempDeleteType === 'action') {
+        endpoint = `/api/actions/${tempDeleteId}`
       }
 
       const response = await fetch(endpoint, {
@@ -1055,16 +1150,17 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
 
       const result = await handleApiResponse(response, '删除失败')
       if (result.success) {
-        toast.success(successMessage)
-        router.refresh()
+        toast.success(tempSuccessMessage)
+        // 不需要刷新，已经乐观更新了
+      } else {
+        // 删除失败，恢复原状态
+        setGoals(originalGoals)
+        toast.error('删除失败，已恢复')
       }
     } catch (error) {
-      // handleApiResponse 已处理错误
-    } finally {
-      setDeleteConfirmOpen(false)
-      setDeleteType(null)
-      setDeleteId(null)
-      setDeleteName('')
+      // 删除失败，恢复原状态
+      setGoals(originalGoals)
+      toast.error('删除失败，已恢复')
     }
   }
 
@@ -1143,76 +1239,133 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
 
     if (!confirmed) return
 
+    // 【优化】保存原始状态，用于错误恢复
+    const originalGoals = [...goals]
+    const selectedGoalsArray = Array.from(selectedGoals)
+    const selectedPhasesArray = Array.from(selectedPhases)
+    const selectedActionsArray = Array.from(selectedActions)
+
+    // 立即更新本地状态（乐观更新）
+    setGoals(prev => {
+      // 先删除行动
+      let updated = prev.map(g => ({
+        ...g,
+        phases: g.phases.map(p => ({
+          ...p,
+          actions: p.actions.filter(a => !selectedActionsArray.includes(a.id))
+        }))
+      }))
+      
+      // 再删除阶段
+      updated = updated.map(g => ({
+        ...g,
+        phases: g.phases.filter(p => !selectedPhasesArray.includes(p.id))
+      }))
+      
+      // 最后删除目标
+      updated = updated.filter(g => !selectedGoalsArray.includes(g.id))
+      
+      return updated
+    })
+
+    // 清空选择并退出批量模式
+    setSelectedGoals(new Set())
+    setSelectedPhases(new Set())
+    setSelectedActions(new Set())
+    setIsBatchSelectMode(false)
+
     setIsBatchDeleting(true)
     let successCount = 0
     let failCount = 0
+    const failedItems: { type: 'goal' | 'phase' | 'action', id: string }[] = []
 
     try {
+      // 【性能优化】使用并发删除，提高性能
       // 批量删除行动
-      for (const actionId of selectedActions) {
+      const actionDeletePromises = selectedActionsArray.map(async (actionId) => {
         try {
           const response = await fetch(`/api/actions/${actionId}`, { method: 'DELETE' })
-          if (response.ok) {
-            successCount++
-          } else {
-            failCount++
-          }
+          return { type: 'action' as const, id: actionId, success: response.ok }
         } catch (error) {
-          failCount++
+          return { type: 'action' as const, id: actionId, success: false }
         }
-      }
+      })
 
       // 批量删除阶段
-      for (const phaseId of selectedPhases) {
+      const phaseDeletePromises = selectedPhasesArray.map(async (phaseId) => {
         try {
           const response = await fetch(`/api/phases/${phaseId}`, { method: 'DELETE' })
-          if (response.ok) {
-            successCount++
-          } else {
-            failCount++
-          }
+          return { type: 'phase' as const, id: phaseId, success: response.ok }
         } catch (error) {
-          failCount++
+          return { type: 'phase' as const, id: phaseId, success: false }
         }
-      }
+      })
 
       // 批量删除目标
-      for (const goalId of selectedGoals) {
+      const goalDeletePromises = selectedGoalsArray.map(async (goalId) => {
         try {
           const response = await fetch(`/api/goals/${goalId}`, { method: 'DELETE' })
-          if (response.ok) {
+          return { type: 'goal' as const, id: goalId, success: response.ok }
+        } catch (error) {
+          return { type: 'goal' as const, id: goalId, success: false }
+        }
+      })
+
+      // 并发执行所有删除操作
+      const allResults = await Promise.allSettled([
+        ...actionDeletePromises,
+        ...phaseDeletePromises,
+        ...goalDeletePromises,
+      ])
+
+      // 处理结果
+      for (const result of allResults) {
+        if (result.status === 'fulfilled') {
+          if (result.value.success) {
             successCount++
           } else {
             failCount++
+            failedItems.push({ type: result.value.type, id: result.value.id })
           }
-        } catch (error) {
+        } else {
           failCount++
+          // 无法确定具体失败的项目，记录错误
+          console.error('Delete operation failed:', result.reason)
         }
       }
 
-      if (successCount > 0) {
-        toast.success(`成功删除 ${successCount} 个项目${failCount > 0 ? `，${failCount} 个失败` : ''}`)
-        // 清空选择并退出批量模式
-        setSelectedGoals(new Set())
-        setSelectedPhases(new Set())
-        setSelectedActions(new Set())
-        setIsBatchSelectMode(false)
+      if (successCount > 0 && failCount === 0) {
+        toast.success(`成功删除 ${successCount} 个项目`)
+      } else if (successCount > 0 && failCount > 0) {
+        toast.warning(`部分删除成功：${successCount} 个成功，${failCount} 个失败`)
+        // 部分失败，恢复失败的项目
+        setGoals(originalGoals)
+        // 重新尝试删除成功的项目（简化处理：直接刷新）
         router.refresh()
       } else if (failCount > 0) {
         toast.error(`删除失败，共 ${failCount} 个项目`)
+        // 全部失败，恢复原状态
+        setGoals(originalGoals)
       }
     } catch (error) {
       toast.error('批量删除过程中发生错误')
+      // 发生错误，恢复原状态
+      setGoals(originalGoals)
     } finally {
       setIsBatchDeleting(false)
     }
-  }, [selectedGoals, selectedPhases, selectedActions, router])
+  }, [selectedGoals, selectedPhases, selectedActions, goals, router])
 
-  // 处理阶段拖拽结束
+  // 处理阶段拖拽结束（带防抖和重试机制）
   const handlePhaseDragEnd = useCallback(async (event: DragEndEvent, goalId: string) => {
     const { active, over } = event
 
     if (!over || active.id === over.id) {
+      return
+    }
+
+    // 如果正在排序，忽略新的拖拽操作
+    if (isReorderingPhases) {
       return
     }
 
@@ -1227,33 +1380,87 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
     const newPhases = arrayMove(goal.phases, oldIndex, newIndex)
     const phaseIds = newPhases.map(p => p.id)
 
-    try {
-      const response = await fetch('/api/phases/reorder', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phaseIds }),
-      })
+    // 【修复】保存原始状态，用于错误恢复
+    const originalPhases = [...goal.phases]
 
-      const result = await handleApiResponse(response, '更新排序失败')
-      if (result.success) {
-        // 更新本地状态
-        setGoals(prev => prev.map(g => 
-          g.id === goalId 
-            ? { ...g, phases: newPhases }
-            : g
-        ))
-        toast.success('排序已更新')
-      }
-    } catch (error) {
-      // handleApiResponse 已处理错误
+    // 立即更新本地状态（乐观更新）
+    setGoals(prev => prev.map(g => 
+      g.id === goalId 
+        ? { ...g, phases: newPhases }
+        : g
+    ))
+
+    // 清除之前的防抖定时器
+    if (phaseReorderTimeoutRef.current) {
+      clearTimeout(phaseReorderTimeoutRef.current)
     }
-  }, [goals])
 
-  // 处理行动拖拽结束
+    // 防抖处理：延迟300ms执行，避免快速拖拽时的并发请求
+    phaseReorderTimeoutRef.current = setTimeout(async () => {
+      setIsReorderingPhases(true)
+      
+      // 重试机制：最多重试3次
+      let retryCount = 0
+      const maxRetries = 3
+      let success = false
+
+      while (retryCount < maxRetries && !success) {
+        try {
+          const response = await fetch('/api/phases/reorder', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ phaseIds }),
+          })
+
+          const result = await handleApiResponse(response, '更新排序失败')
+          if (result.success) {
+            success = true
+            toast.success('排序已更新')
+          } else {
+            retryCount++
+            if (retryCount < maxRetries) {
+              // 等待后重试（指数退避）
+              await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 100))
+            } else {
+              // 重试失败，恢复原状态
+              setGoals(prev => prev.map(g => 
+                g.id === goalId 
+                  ? { ...g, phases: originalPhases }
+                  : g
+              ))
+              toast.error('更新排序失败，已恢复原顺序')
+            }
+          }
+        } catch (error) {
+          retryCount++
+          if (retryCount < maxRetries) {
+            await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 100))
+          } else {
+            // 重试失败，恢复原状态
+            setGoals(prev => prev.map(g => 
+              g.id === goalId 
+                ? { ...g, phases: originalPhases }
+                : g
+            ))
+            toast.error('更新排序失败，已恢复原顺序')
+          }
+        }
+      }
+
+      setIsReorderingPhases(false)
+    }, 300) // 300ms防抖延迟
+  }, [goals, isReorderingPhases])
+
+  // 处理行动拖拽结束（带防抖和重试机制）
   const handleActionDragEnd = useCallback(async (event: DragEndEvent, phaseId: string) => {
     const { active, over } = event
 
     if (!over || active.id === over.id) {
+      return
+    }
+
+    // 如果正在排序，忽略新的拖拽操作
+    if (isReorderingActions) {
       return
     }
 
@@ -1272,34 +1479,97 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
     const newActions = arrayMove(phase.actions, oldIndex, newIndex)
     const actionIds = newActions.map(a => a.id)
 
-    try {
-      const response = await fetch('/api/actions/reorder', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ actionIds }),
-      })
+    // 【修复】保存原始状态，用于错误恢复
+    const originalActions = [...phase.actions]
 
-      const result = await handleApiResponse(response, '更新排序失败')
-      if (result.success) {
-        // 更新本地状态
-        setGoals(prev => prev.map(g => 
-          g.id === goal.id
-            ? {
-                ...g,
-                phases: g.phases.map(p =>
-                  p.id === phaseId
-                    ? { ...p, actions: newActions }
-                    : p
-                )
-              }
-            : g
-        ))
-        toast.success('排序已更新')
-      }
-    } catch (error) {
-      // handleApiResponse 已处理错误
+    // 立即更新本地状态（乐观更新）
+    setGoals(prev => prev.map(g => 
+      g.id === goal.id
+        ? {
+            ...g,
+            phases: g.phases.map(p =>
+              p.id === phaseId
+                ? { ...p, actions: newActions }
+                : p
+            )
+          }
+        : g
+    ))
+
+    // 清除之前的防抖定时器
+    if (actionReorderTimeoutRef.current) {
+      clearTimeout(actionReorderTimeoutRef.current)
     }
-  }, [goals])
+
+    // 防抖处理：延迟300ms执行，避免快速拖拽时的并发请求
+    actionReorderTimeoutRef.current = setTimeout(async () => {
+      setIsReorderingActions(true)
+      
+      // 重试机制：最多重试3次
+      let retryCount = 0
+      const maxRetries = 3
+      let success = false
+
+      while (retryCount < maxRetries && !success) {
+        try {
+          const response = await fetch('/api/actions/reorder', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ actionIds }),
+          })
+
+          const result = await handleApiResponse(response, '更新排序失败')
+          if (result.success) {
+            success = true
+            toast.success('排序已更新')
+          } else {
+            retryCount++
+            if (retryCount < maxRetries) {
+              // 等待后重试（指数退避）
+              await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 100))
+            } else {
+              // 重试失败，恢复原状态
+              setGoals(prev => prev.map(g => 
+                g.id === goal.id
+                  ? {
+                      ...g,
+                      phases: g.phases.map(p =>
+                        p.id === phaseId
+                          ? { ...p, actions: originalActions }
+                          : p
+                      )
+                    }
+                  : g
+              ))
+              toast.error('更新排序失败，已恢复原顺序')
+            }
+          }
+        } catch (error) {
+          retryCount++
+          if (retryCount < maxRetries) {
+            await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 100))
+          } else {
+            // 重试失败，恢复原状态
+            setGoals(prev => prev.map(g => 
+              g.id === goal.id
+                ? {
+                    ...g,
+                    phases: g.phases.map(p =>
+                      p.id === phaseId
+                        ? { ...p, actions: originalActions }
+                        : p
+                    )
+                  }
+                : g
+            ))
+            toast.error('更新排序失败，已恢复原顺序')
+          }
+        }
+      }
+
+      setIsReorderingActions(false)
+    }, 300) // 300ms防抖延迟
+  }, [goals, isReorderingActions])
 
   return (
     <div className="min-h-screen p-4 pt-20 bg-background">
@@ -1321,25 +1591,24 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
         <div className="flex justify-between items-center flex-wrap gap-2">
           <h1 className="text-2xl font-bold">目标规划</h1>
           <div className="flex gap-2">
-            {isDev && (
-              <Button
-                variant={isBatchSelectMode ? 'default' : 'outline'}
-                onClick={toggleBatchSelectMode}
-                disabled={isBatchDeleting}
-              >
-                {isBatchSelectMode ? (
-                  <>
-                    <CheckSquare className="w-4 h-4 mr-2" />
-                    退出批量模式
-                  </>
-                ) : (
-                  <>
-                    <Square className="w-4 h-4 mr-2" />
-                    批量操作
-                  </>
-                )}
-              </Button>
-            )}
+            <Button
+              variant={isBatchSelectMode ? 'default' : 'outline'}
+              onClick={toggleBatchSelectMode}
+              disabled={isBatchDeleting}
+              aria-label={isBatchSelectMode ? '退出批量模式' : '进入批量操作模式'}
+            >
+              {isBatchSelectMode ? (
+                <>
+                  <CheckSquare className="w-4 h-4 mr-2" />
+                  退出批量模式
+                </>
+              ) : (
+                <>
+                  <Square className="w-4 h-4 mr-2" />
+                  批量操作
+                </>
+              )}
+            </Button>
           <Button onClick={() => setIsGoalDialogOpen(true)}>
             <Plus className="w-4 h-4 mr-2" />
             新建目标
@@ -1348,7 +1617,7 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
         </div>
 
         {/* 批量操作工具栏 */}
-        {isBatchSelectMode && isDev && (
+        {isBatchSelectMode && (
           <Card className="border-primary/50 bg-primary/5">
             <CardContent className="py-3">
               <div className="flex items-center justify-between flex-wrap gap-3">
@@ -1509,16 +1778,16 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
                       >
                         设为当前目标
                       </Button>
-                      {isDev && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => handleDeleteGoal(goal.id)}
-                          className="text-muted-foreground hover:text-destructive"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </Button>
-                      )}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleDeleteGoal(goal.id)}
+                        className="text-muted-foreground hover:text-destructive"
+                        aria-label="删除目标"
+                        title="删除目标"
+                      >
+                        <Trash2 className="w-3 h-3" aria-hidden="true" />
+                      </Button>
                     </div>
                   </div>
                   <CardDescription>
@@ -1564,7 +1833,6 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
                                   isPhaseSelected={isPhaseSelected}
                                   isPhaseExpanded={isPhaseExpanded}
                                   isBatchSelectMode={isBatchSelectMode}
-                                  isDev={isDev}
                                   onTogglePhase={togglePhase}
                                   onTogglePhaseSelection={togglePhaseSelection}
                                   onAddAction={() => {
@@ -1615,7 +1883,6 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
                                                 phaseId={phase.id}
                                                 isActionSelected={isActionSelected}
                                                 isBatchSelectMode={isBatchSelectMode}
-                                                isDev={isDev}
                                                 onToggleActionSelection={toggleActionSelection}
                                                 onDeleteAction={handleDeleteAction}
                                                 onDragEnd={handleActionDragEnd}

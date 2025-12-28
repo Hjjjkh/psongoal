@@ -51,18 +51,16 @@ export default function HomeView({
       <div className="max-w-4xl mx-auto space-y-6 md:space-y-8">
         {/* 页面标题 */}
         <div className="flex items-center justify-between mb-2">
-          <div>
-            <h1 className="text-3xl md:text-4xl font-bold text-foreground" suppressHydrationWarning>
+          <h1 className="text-3xl md:text-4xl font-bold text-foreground">
             目标执行中心
           </h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              每天一个任务，持续进步
-            </p>
-          </div>
         </div>
+        <p className="text-sm text-muted-foreground -mt-4 mb-2">
+          每天一个任务，持续进步
+        </p>
 
         {/* 今日状态卡片 - 最突出 */}
-        <Card className={`border-2 shadow-lg ${todayCompleted ? 'border-green-500 dark:border-green-600' : hasCurrentAction ? 'border-orange-500 dark:border-orange-600' : 'border-muted'}`}>
+        <Card className={`border-2 shadow-lg transition-all duration-300 ${todayCompleted ? 'border-green-500 dark:border-green-600 bg-green-50/30 dark:bg-green-900/10' : hasCurrentAction ? 'border-orange-500 dark:border-orange-600 bg-orange-50/30 dark:bg-orange-900/10' : 'border-muted'}`}>
           <CardHeader className="pb-4">
             <CardTitle className="flex items-center gap-2 text-xl md:text-2xl">
               {todayCompleted ? (
@@ -99,11 +97,20 @@ export default function HomeView({
                   </p>
                 </div>
                 <div className="flex gap-2">
-                  <Button onClick={() => router.push('/dashboard')} className="flex-1" size="lg">
+                  <Button 
+                    onClick={() => router.push('/dashboard')} 
+                    className="flex-1 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]" 
+                    size="lg"
+                  >
                     <BarChart3 className="w-4 h-4 mr-2" />
                     查看复盘
                   </Button>
-                  <Button onClick={() => router.push('/goals')} variant="outline" className="flex-1" size="lg">
+                  <Button 
+                    onClick={() => router.push('/goals')} 
+                    variant="outline" 
+                    className="flex-1 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]" 
+                    size="lg"
+                  >
                     <Target className="w-4 h-4 mr-2" />
                     目标规划
                   </Button>
@@ -122,9 +129,9 @@ export default function HomeView({
                       )}
                     </div>
                     {goalProgress && (
-                      <div className="w-full bg-background rounded-full h-2">
+                      <div className="w-full bg-background rounded-full h-2 overflow-hidden">
                         <div
-                          className="bg-primary h-2 rounded-full transition-all"
+                          className="bg-primary h-2 rounded-full transition-all duration-500 ease-out"
                           style={{ width: `${goalProgress.percentage}%` }}
                         />
                       </div>
@@ -144,7 +151,11 @@ export default function HomeView({
                     )}
                   </div>
                 </div>
-                <Button onClick={() => router.push('/today')} className="w-full" size="lg">
+                <Button 
+                  onClick={() => router.push('/today')} 
+                  className="w-full transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]" 
+                  size="lg"
+                >
                   <ArrowRight className="w-4 h-4 mr-2" />
                   去完成今日行动
                 </Button>
@@ -185,7 +196,11 @@ export default function HomeView({
                 <p className="text-sm text-muted-foreground">
                   💡 还没有目标？去规划页面创建你的第一个目标，开始执行之旅
                 </p>
-                <Button onClick={() => router.push('/goals')} className="w-full" size="lg">
+                <Button 
+                  onClick={() => router.push('/goals')} 
+                  className="w-full transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]" 
+                  size="lg"
+                >
                   <Target className="w-4 h-4 mr-2" />
                   去规划目标
                 </Button>

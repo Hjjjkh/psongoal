@@ -149,8 +149,9 @@ export default function DashboardView({ goals, consecutiveDays, dailyStats, hasC
     
     const thisWeekCompleted = thisWeekData.filter(d => d.completed > 0).length
     const lastWeekCompleted = lastWeekData.filter(d => d.completed > 0).length
-    const thisWeekTotal = thisWeekData.length
-    const lastWeekTotal = lastWeekData.length
+    // 【修复】total 应该是有记录的天数，而不是所有天数
+    const thisWeekTotal = thisWeekData.filter(d => d.total > 0).length
+    const lastWeekTotal = lastWeekData.filter(d => d.total > 0).length
     
     return {
       thisWeek: {
@@ -184,8 +185,9 @@ export default function DashboardView({ goals, consecutiveDays, dailyStats, hasC
     
     const thisMonthCompleted = thisMonthData.filter(d => d.completed > 0).length
     const lastMonthCompleted = lastMonthData.filter(d => d.completed > 0).length
-    const thisMonthTotal = thisMonthData.length
-    const lastMonthTotal = lastMonthData.length
+    // 【修复】total 应该是有记录的天数，而不是所有天数
+    const thisMonthTotal = thisMonthData.filter(d => d.total > 0).length
+    const lastMonthTotal = lastMonthData.filter(d => d.total > 0).length
     
     return {
       thisMonth: {

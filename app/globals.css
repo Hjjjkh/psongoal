@@ -55,6 +55,13 @@
   }
   body {
     @apply bg-background text-foreground;
+    /* 优化滚动体验 */
+    scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
+  
+  /* 优化滚动体验和字体渲染 */
+  /* 这些是全局优化，不会影响功能 */
 }
 

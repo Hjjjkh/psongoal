@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getSystemState, initSystemState, getNextAction, updateSystemState } from '@/lib/system-state'
 import { getToday } from '@/lib/utils/date'
 import { calculateConsecutiveDays } from '@/lib/utils/stats'
+import type { Goal, Phase, Action } from '@/lib/core/types'
 import dynamic from 'next/dynamic'
 
 import LoadingSpinner from '@/components/loading-spinner'
@@ -58,12 +59,13 @@ export default async function TodayPage() {
 
   // 【执行力强化】只获取当前 Action 数据，不查询 execution
   // 所有"是否允许完成"的判断交由后端 API 和 SystemState 处理
-  let goal: any = null
-  let phase: any = null
-  let action: any = null
+  let goal: Goal | null = null
+  let phase: Phase | null = null
+  let action: Action | null = null
 
   if (systemState.current_action_id) {
     // 【每日唯一行动约束】检查今天是否已经完成过行动（使用统一的日期工具函数）
+    // 【数据独立性保障】直接查询 daily_executions，不依赖 action 的存在
     const today = getToday()
     const { data: todayExecutions } = await supabase
       .from('daily_executions')
@@ -162,10 +164,10 @@ export default async function TodayPage() {
                 .select('id, completed_at, order_index')
                 .in('phase_id', phaseIds)
 
-              if (allActions) {
+              if (allActions && action) {
                 const totalActions = allActions.length
                 const completedActions = allActions.filter(a => a.completed_at).length
-                const currentActionIndex = allActions.findIndex(a => a.id === action.id)
+                const currentActionIndex = allActions.findIndex(a => a.id === action!.id)
                 
                 goalProgress = {
                   total: totalActions,
@@ -178,6 +180,8 @@ export default async function TodayPage() {
           }
           
           // 计算连续完成天数（使用统一的统计函数）
+          // 【数据独立性保障】直接查询 daily_executions，不依赖 action 的存在
+          // 即使 action 被删除，历史执行记录仍然保留，确保连续天数计算的真实性
           const { data: recentExecutions } = await supabase
             .from('daily_executions')
             .select('date, completed')
@@ -189,6 +193,7 @@ export default async function TodayPage() {
           const consecutiveDays = calculateConsecutiveDays(recentExecutions || [])
           
           // 检查今天是否已完成（使用统一的日期工具函数）
+          // 【数据独立性保障】直接查询 daily_executions，不依赖 action 的存在
           const today = getToday()
           const { data: todayExecutionsData } = await supabase
             .from('daily_executions')
@@ -389,6 +394,8 @@ export default async function TodayPage() {
     })() : Promise.resolve(null),
     
     // 计算连续完成天数（使用统一的统计函数）
+    // 【数据独立性保障】直接查询 daily_executions，不依赖 action 的存在
+    // 即使 action 被删除，历史执行记录仍然保留，确保连续天数计算的真实性
     (async () => {
       const { data: recentExecutions } = await supabase
         .from('daily_executions')
@@ -402,6 +409,7 @@ export default async function TodayPage() {
     })(),
     
     // 检查今天是否已完成（使用统一的日期工具函数）
+    // 【数据独立性保障】直接查询 daily_executions，不依赖 action 的存在
     (async () => {
       const today = getToday()
       const { data } = await supabase

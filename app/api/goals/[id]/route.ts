@@ -1,6 +1,7 @@
 /**
- * DEV ONLY: 删除 Goal（测试级删除）
- * 仅用于开发环境，真删除，不做软删除
+ * 删除 Goal
+ * 真删除，级联删除关联的 phases 和 actions
+ * 如果删除的是当前目标，会自动清理系统状态
  */
 
 import { NextRequest, NextResponse } from 'next/server'

@@ -157,10 +157,11 @@ export async function POST(request: Request) {
         executions: executions.length,
       },
     })
-  } catch (error: any) {
+  } catch (error) {
     console.error('导入数据失败:', error)
+    const errorMessage = error instanceof Error ? error.message : '导入数据失败，请重试'
     return NextResponse.json(
-      { error: error.message || '导入数据失败，请重试' },
+      { error: errorMessage },
       { status: 500 }
     )
   }

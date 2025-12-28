@@ -6,8 +6,10 @@ import dynamic from 'next/dynamic'
 import LoadingSpinner from '@/components/loading-spinner'
 
 // 动态导入 SettingsView，优化初始加载
+// 禁用 SSR 以避免图标组件的 hydration 错误
 const SettingsView = dynamic(() => import('@/components/settings-view'), {
   loading: () => <LoadingSpinner message="加载设置..." />,
+  ssr: false,
 })
 
 /**

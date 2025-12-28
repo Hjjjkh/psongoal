@@ -29,9 +29,12 @@ export async function GET(request: NextRequest) {
           },
         }
       )
-    } catch (error: any) {
+    } catch (error) {
       // 检查是否是表不存在错误
-      if (error?.code === '42P01' || error?.message?.includes('relation') || error?.message?.includes('table')) {
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      const errorCode = (error as { code?: string })?.code
+      
+      if (errorCode === '42P01' || errorMessage?.includes('relation') || errorMessage?.includes('table')) {
         return NextResponse.json(
           { 
             error: 'Table not found',

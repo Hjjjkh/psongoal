@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { updateTodo, deleteTodo } from '@/lib/todos'
+import { VALIDATION_LIMITS, ERROR_MESSAGES } from '@/lib/constants/validation'
 
 /**
  * 更新代办事项
@@ -25,8 +26,11 @@ export async function PUT(
       if (typeof content !== 'string' || content.trim().length === 0) {
         return NextResponse.json({ error: 'Invalid content' }, { status: 400 })
       }
-      if (content.trim().length > 500) {
-        return NextResponse.json({ error: 'Content too long' }, { status: 400 })
+      if (content.trim().length > VALIDATION_LIMITS.MAX_TODO_CONTENT_LENGTH) {
+        return NextResponse.json({ 
+          error: ERROR_MESSAGES.CONTENT_TOO_LONG,
+          details: `Maximum length is ${VALIDATION_LIMITS.MAX_TODO_CONTENT_LENGTH} characters`
+        }, { status: 400 })
       }
       updates.content = content
     }

@@ -2,7 +2,14 @@ import { redirect } from "next/navigation"
 import { createClient } from '@/lib/supabase/server'
 import { getSystemState } from '@/lib/system-state'
 import { calculateConsecutiveDays } from '@/lib/utils/stats'
-import HomeView from '@/components/home-view'
+import dynamic from 'next/dynamic'
+import LoadingSpinner from '@/components/loading-spinner'
+
+// 动态导入 HomeView，禁用 SSR 以避免 hydration 错误
+const HomeView = dynamic(() => import('@/components/home-view'), {
+  ssr: false,
+  loading: () => <LoadingSpinner message="加载中..." />,
+})
 
 export default async function Home() {
   const supabase = await createClient()
@@ -103,6 +110,7 @@ export default async function Home() {
               }
 
               // 检查今天是否已完成（使用已获取的行动ID）
+              // 【数据独立性保障】直接查询 daily_executions，不依赖 action 的存在
               const actionIds = allActions.map(a => a.id)
               const { data: todayExecution } = await supabase
                 .from('daily_executions')
@@ -122,6 +130,8 @@ export default async function Home() {
   }
 
   // 获取连续完成天数（使用统一的统计函数）
+  // 【数据独立性保障】直接查询 daily_executions，不依赖 action 的存在
+  // 即使 action 被删除，历史执行记录仍然保留，确保连续天数计算的真实性
   const { data: allExecutions } = await supabase
     .from('daily_executions')
     .select('date, completed')
@@ -133,7 +143,6 @@ export default async function Home() {
   const consecutiveDays = calculateConsecutiveDays(allExecutions || [])
 
   return (
-    <div>
     <HomeView
       hasCurrentAction={hasCurrentAction && !isGoalCompleted}
       todayCompleted={todayCompleted}
@@ -143,7 +152,6 @@ export default async function Home() {
       consecutiveDays={consecutiveDays}
       isGoalCompleted={isGoalCompleted}
     />
-    </div>
   )
 }
 

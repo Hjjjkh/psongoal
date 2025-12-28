@@ -41,6 +41,7 @@ export default function DataExportImport() {
             description: errorMessage,
           })
         }
+        // 注意：状态会在 finally 块中重置，这里不需要手动重置
         return
       }
 
@@ -51,6 +52,7 @@ export default function DataExportImport() {
         toast.error('导出失败', {
           description: '导出的数据为空，请检查是否有数据',
         })
+        // 注意：状态会在 finally 块中重置，这里不需要手动重置
         return
       }
 
@@ -163,7 +165,7 @@ export default function DataExportImport() {
       setIsImporting(false)
       setImportData(data)
       setShowImportConfirm(true)
-    } catch (error: any) {
+    } catch (error) {
       console.error('Import error:', error)
       
       if (error instanceof SyntaxError) {
@@ -176,8 +178,9 @@ export default function DataExportImport() {
           duration: 5000,
         })
       } else {
+        const errorMessage = error instanceof Error ? error.message : '请重试'
         toast.error('导入失败', {
-          description: error.message || '请重试',
+          description: errorMessage,
         })
       }
     } finally {
@@ -224,7 +227,7 @@ export default function DataExportImport() {
           window.location.reload()
         }, 1500)
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error('Import error:', error)
       
       if (error instanceof SyntaxError) {
@@ -237,8 +240,9 @@ export default function DataExportImport() {
           duration: 5000,
         })
       } else {
+        const errorMessage = error instanceof Error ? error.message : '请重试'
         toast.error('导入失败', {
-          description: error.message || '请重试',
+          description: errorMessage,
         })
       }
     } finally {

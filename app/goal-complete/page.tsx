@@ -73,6 +73,8 @@ export default async function GoalCompletePage() {
   }
 
   // 获取目标的所有完成记录
+  // 【数据独立性保障】直接查询 daily_executions，不依赖 action 的存在
+  // 即使 action 被删除，历史执行记录仍然保留，确保完成数据的真实性
   const { data: goalExecutions } = allActionIds.length > 0
     ? await supabase
         .from('daily_executions')
@@ -95,6 +97,8 @@ export default async function GoalCompletePage() {
   // 获取连续完成天数（跨目标）
   // 优化：限制查询范围，最多查询365天，提高性能
   // 优化：使用统一的工具函数计算连续天数
+  // 【数据独立性保障】直接查询 daily_executions，不依赖 action 的存在
+  // 即使 action 被删除，历史执行记录仍然保留，确保连续天数计算的真实性
   const { data: allExecutions } = await supabase
     .from('daily_executions')
     .select('date, completed')
