@@ -1,5 +1,6 @@
 {
-  "buildCommand": "pnpm install && pnpm build",
-  "installCommand": "pnpm install",
-  "framework": "nextjs"
+  "buildCommand": "cd ../.. && pnpm install && pnpm build:web",
+  "installCommand": "cd ../.. && pnpm install",
+  "framework": "nextjs",
+  "packageManager": "pnpm"
 }
