@@ -128,7 +128,8 @@ function SortablePhaseItem({
           </button>
           <div className="flex items-center gap-2 flex-1">
             <GripVertical
-              className="w-4 h-4 text-muted-foreground cursor-grab active:cursor-grabbing"
+              className="w-4 h-4 text-muted-foreground cursor-grab active:cursor-grabbing touch-none"
+              style={{ touchAction: 'none' }}
               {...attributes}
               {...listeners}
             />
@@ -212,7 +213,8 @@ function SortableActionItem({
             />
           )}
         <GripVertical
-          className="w-4 h-4 text-muted-foreground cursor-grab active:cursor-grabbing flex-shrink-0"
+          className="w-4 h-4 text-muted-foreground cursor-grab active:cursor-grabbing flex-shrink-0 touch-none"
+          style={{ touchAction: 'none' }}
           {...attributes}
           {...listeners}
         />
@@ -246,9 +248,12 @@ function SortableActionItem({
   )
 }
 
+import { useGoalsSync } from '@/hooks/use-goals-sync'
+
 export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
   const router = useRouter()
-  const [goals, setGoals] = useState(initialGoals)
+  // 使用实时同步 Hook，自动同步数据库变化
+  const { goals, setGoals, isSyncing } = useGoalsSync(initialGoals)
   const [expandedGoals, setExpandedGoals] = useState<Set<string>>(new Set())
   const [expandedPhases, setExpandedPhases] = useState<Set<string>>(new Set())
   
@@ -389,8 +394,15 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
   const [isBatchDeleting, setIsBatchDeleting] = useState(false)
 
   // 拖拽排序传感器
+  // 【移动端修复】为 PointerSensor 添加激活约束，确保移动设备上可以正常拖拽
+  // distance: 5 表示需要移动 5px 才激活拖拽，避免与点击事件冲突
+  // 这个距离在移动设备上更容易触发，同时避免误触
   const sensors = useSensors(
-    useSensor(PointerSensor),
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 5, // 移动 5px 后激活拖拽，移动端友好
+      },
+    }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     })
@@ -545,7 +557,7 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
             duration: 5000,
           })
         }
-        router.refresh()
+        // 实时同步会自动更新数据，无需手动刷新
         setIsGoalDialogOpen(false)
         setGoalName('')
         setGoalCategory('health')
@@ -632,7 +644,7 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
         // API 返回的数据结构是 { success: true, data: { id, name, ... } }
         const goalId = (result.data as any)?.id
         
-        router.refresh()
+        // 实时同步会自动更新数据，无需手动刷新
         setIsGoalDialogOpen(false)
         setGoalName('')
         setGoalCategory('health')
@@ -936,7 +948,7 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
             description: '创建数量数据异常，请刷新页面查看',
           })
         }
-        router.refresh()
+        // 实时同步会自动更新数据，不需要手动刷新
         setIsActionDialogOpen(false)
         setSelectedPhaseId(null)
         setActionTitle('')
@@ -969,7 +981,10 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
 
       if (result.success) {
         toast.success(newStatus === 'paused' ? '目标已暂停' : '目标已恢复')
-        router.refresh()
+        // 使用乐观更新，直接更新本地状态，不需要刷新整个页面
+        setGoals(prev => prev.map(g => 
+          g.id === goalId ? { ...g, status: newStatus as 'active' | 'paused' } : g
+        ))
       }
     } catch (error) {
       // handleApiResponse 已处理错误
@@ -991,6 +1006,7 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
         // 设置成功后，直接跳转到 today 页面
         // today 页面会根据"每日唯一行动"逻辑自动判断今天是否已完成
         router.push('/today')
+        // 移除 router.refresh()，路由跳转会自动获取最新数据
       }
       // handleApiResponse 已处理错误提示
     } catch (error) {
@@ -1336,16 +1352,17 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
 
       if (successCount > 0 && failCount === 0) {
         toast.success(`成功删除 ${successCount} 个项目`)
+        // 批量删除成功，已经使用乐观更新，不需要刷新
       } else if (successCount > 0 && failCount > 0) {
         toast.warning(`部分删除成功：${successCount} 个成功，${failCount} 个失败`)
         // 部分失败，恢复失败的项目
         setGoals(originalGoals)
-        // 重新尝试删除成功的项目（简化处理：直接刷新）
-        router.refresh()
+        // 实时同步会自动更新数据，无需手动刷新
       } else if (failCount > 0) {
         toast.error(`删除失败，共 ${failCount} 个项目`)
         // 全部失败，恢复原状态
         setGoals(originalGoals)
+        // 全部失败时，不需要刷新，已经恢复原状态
       }
     } catch (error) {
       toast.error('批量删除过程中发生错误')
@@ -1416,6 +1433,7 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
           if (result.success) {
             success = true
             toast.success('排序已更新')
+            // 排序已使用乐观更新，不需要刷新整个页面
           } else {
             retryCount++
             if (retryCount < maxRetries) {
@@ -1522,6 +1540,7 @@ export default function GoalsView({ goals: initialGoals }: GoalsViewProps) {
           if (result.success) {
             success = true
             toast.success('排序已更新')
+            // 排序已使用乐观更新，不需要刷新整个页面
           } else {
             retryCount++
             if (retryCount < maxRetries) {

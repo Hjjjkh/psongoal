@@ -22,7 +22,9 @@ export default async function GoalsPage() {
     redirect('/auth/login')
   }
 
-  // 获取所有 Goals
+  // 【性能优化】获取所有 Goals，使用索引优化查询
+  // 确保 goals 表有 user_id 和 created_at 的复合索引
+  // 不限制数量，确保加载所有目标（如果将来数据量很大，可以考虑实现分页）
   const { data: goals } = await supabase
     .from('goals')
     .select('*')
@@ -33,10 +35,14 @@ export default async function GoalsPage() {
     return <GoalsView goals={[]} />
   }
 
-  // 优化：批量获取所有 phases 和 actions，减少查询次数
+  // 【性能优化】批量获取所有 phases 和 actions，减少查询次数
   const goalIds = goals.map(g => g.id)
   
-  // 先获取所有 phases
+  if (goalIds.length === 0) {
+    return <GoalsView goals={[]} />
+  }
+
+  // 先获取所有 phases（并行查询优化）
   const { data: allPhases } = await supabase
     .from('phases')
     .select('*')

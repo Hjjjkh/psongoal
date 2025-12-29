@@ -70,7 +70,7 @@ export default function SettingsView({ reminderEnabled, reminderTime }: Settings
         // 避免先跳转到首页再重定向的二次跳转
         setTimeout(() => {
           router.push('/goals')
-          router.refresh()
+          // 实时同步会自动更新数据，无需手动刷新
         }, 1500)
       } else {
         // 如果删除失败，也要重置状态

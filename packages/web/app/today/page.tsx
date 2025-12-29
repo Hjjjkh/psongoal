@@ -12,8 +12,9 @@ const TodayView = dynamic(() => import('@/components/today-view'), {
   loading: () => <LoadingSpinner message="加载今日行动..." />,
 })
 
-// 确保数据实时更新
-export const revalidate = 0
+// 优化：使用合理的缓存策略，减少不必要的重新获取
+// 设置为 10 秒，在保证数据新鲜度的同时提升性能
+export const revalidate = 10
 
 export default async function TodayPage() {
   const supabase = await createClient()

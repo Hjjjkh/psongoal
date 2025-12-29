@@ -323,6 +323,7 @@ export default function TodayView({ goal, phase, action, hasCurrentAction, hasAn
         // 标记未完成后，跳转到复盘看板，让用户查看整体进度
         setTimeout(() => {
           router.push('/dashboard')
+          // 移除 router.refresh()，使用路由跳转即可，Next.js 会自动获取最新数据
         }, 1500)
       }
       // handleApiResponse 已处理错误提示
@@ -341,10 +342,10 @@ export default function TodayView({ goal, phase, action, hasCurrentAction, hasAn
     setShowCompletionAnimation(false)
     if (isGoalCompleted) {
       await router.push('/goal-complete')
-      router.refresh() // 强制刷新数据
+      // 移除 router.refresh()，路由跳转会自动获取最新数据
     } else {
       await router.push('/dashboard')
-      router.refresh() // 强制刷新数据
+      // 移除 router.refresh()，路由跳转会自动获取最新数据
     }
   }
 
