@@ -2,6 +2,13 @@
 const nextConfig = {
   reactStrictMode: true,
   
+  // Zeabur 构建优化：禁用静态优化警告
+  // 这些警告不影响功能，但会在构建时显示
+  onDemandEntries: {
+    maxInactiveAge: 25 * 1000,
+    pagesBufferLength: 2,
+  },
+  
   // 性能优化配置
   experimental: {
     optimizePackageImports: ['lucide-react', 'recharts', '@radix-ui/react-dialog', '@radix-ui/react-select'],
@@ -9,6 +16,10 @@ const nextConfig = {
   
   // 压缩配置
   compress: true,
+  
+  // 输出配置：确保在 Zeabur 上正确构建
+  // 注意：standalone 模式需要特殊配置，如果 Zeabur 不支持，可以移除
+  // output: 'standalone',
   
   // Webpack 优化配置
   webpack: (config, { dev, isServer }) => {

@@ -26,25 +26,33 @@ export function debounce<T extends (...args: any[]) => any>(
  * React Hook 版本的防抖
  * 用于在组件中使用防抖功能
  */
-import { useRef, useCallback } from 'react'
+import { useRef, useCallback, useEffect } from 'react'
 
 export function useDebounce<T extends (...args: any[]) => any>(
   func: T,
   wait: number
 ): T {
   const timeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const funcRef = useRef(func)
 
-  return useCallback(
+  // 使用 useEffect 更新函数引用，确保总是使用最新的函数
+  useEffect(() => {
+    funcRef.current = func
+  }, [func])
+
+  const debouncedFunc = useCallback(
     ((...args: Parameters<T>) => {
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current)
       }
 
       timeoutRef.current = setTimeout(() => {
-        func(...args)
+        funcRef.current(...args)
       }, wait)
     }) as T,
-    [func, wait]
+    [wait]
   )
+
+  return debouncedFunc as T
 }
 
