@@ -97,6 +97,13 @@ class ApiService {
     });
   }
 
+  async reorderPhases(phaseIds: string[]) {
+    return this.request('/phases/reorder', {
+      method: 'POST',
+      body: JSON.stringify({phaseIds}),
+    });
+  }
+
   // 行动相关
   async createAction(action: {
     phase_id: string;
@@ -112,6 +119,13 @@ class ApiService {
   async deleteAction(actionId: string) {
     return this.request(`/actions/${actionId}`, {
       method: 'DELETE',
+    });
+  }
+
+  async reorderActions(actionIds: string[]) {
+    return this.request('/actions/reorder', {
+      method: 'POST',
+      body: JSON.stringify({actionIds}),
     });
   }
 

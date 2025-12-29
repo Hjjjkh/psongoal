@@ -167,6 +167,102 @@ export default function GoalDetailScreen() {
     ]);
   };
 
+  // 阶段排序功能
+  const handleMovePhaseUp = async (phaseIndex: number) => {
+    if (phaseIndex === 0) return; // 已经是第一个，无法上移
+    
+    const sortedPhases = [...goal.phases].sort((a, b) => a.order_index - b.order_index);
+    const newPhases = [...sortedPhases];
+    [newPhases[phaseIndex - 1], newPhases[phaseIndex]] = [newPhases[phaseIndex], newPhases[phaseIndex - 1]];
+    
+    const phaseIds = newPhases.map(p => p.id);
+    
+    try {
+      const response = await apiService.reorderPhases(phaseIds);
+      if (response.success) {
+        loadGoalDetail();
+      } else {
+        Alert.alert('错误', response.error || '排序失败');
+      }
+    } catch (error) {
+      console.error('排序阶段失败:', error);
+      Alert.alert('错误', '排序失败，请检查网络连接');
+    }
+  };
+
+  const handleMovePhaseDown = async (phaseIndex: number) => {
+    const sortedPhases = [...goal.phases].sort((a, b) => a.order_index - b.order_index);
+    if (phaseIndex === sortedPhases.length - 1) return; // 已经是最后一个，无法下移
+    
+    const newPhases = [...sortedPhases];
+    [newPhases[phaseIndex], newPhases[phaseIndex + 1]] = [newPhases[phaseIndex + 1], newPhases[phaseIndex]];
+    
+    const phaseIds = newPhases.map(p => p.id);
+    
+    try {
+      const response = await apiService.reorderPhases(phaseIds);
+      if (response.success) {
+        loadGoalDetail();
+      } else {
+        Alert.alert('错误', response.error || '排序失败');
+      }
+    } catch (error) {
+      console.error('排序阶段失败:', error);
+      Alert.alert('错误', '排序失败，请检查网络连接');
+    }
+  };
+
+  // 行动排序功能
+  const handleMoveActionUp = async (phaseId: string, actionIndex: number) => {
+    const phase = goal.phases.find(p => p.id === phaseId);
+    if (!phase) return;
+    
+    const sortedActions = [...phase.actions].sort((a, b) => a.order_index - b.order_index);
+    if (actionIndex === 0) return; // 已经是第一个，无法上移
+    
+    const newActions = [...sortedActions];
+    [newActions[actionIndex - 1], newActions[actionIndex]] = [newActions[actionIndex], newActions[actionIndex - 1]];
+    
+    const actionIds = newActions.map(a => a.id);
+    
+    try {
+      const response = await apiService.reorderActions(actionIds);
+      if (response.success) {
+        loadGoalDetail();
+      } else {
+        Alert.alert('错误', response.error || '排序失败');
+      }
+    } catch (error) {
+      console.error('排序行动失败:', error);
+      Alert.alert('错误', '排序失败，请检查网络连接');
+    }
+  };
+
+  const handleMoveActionDown = async (phaseId: string, actionIndex: number) => {
+    const phase = goal.phases.find(p => p.id === phaseId);
+    if (!phase) return;
+    
+    const sortedActions = [...phase.actions].sort((a, b) => a.order_index - b.order_index);
+    if (actionIndex === sortedActions.length - 1) return; // 已经是最后一个，无法下移
+    
+    const newActions = [...sortedActions];
+    [newActions[actionIndex], newActions[actionIndex + 1]] = [newActions[actionIndex + 1], newActions[actionIndex]];
+    
+    const actionIds = newActions.map(a => a.id);
+    
+    try {
+      const response = await apiService.reorderActions(actionIds);
+      if (response.success) {
+        loadGoalDetail();
+      } else {
+        Alert.alert('错误', response.error || '排序失败');
+      }
+    } catch (error) {
+      console.error('排序行动失败:', error);
+      Alert.alert('错误', '排序失败，请检查网络连接');
+    }
+  };
+
   const getCategoryIcon = (category: string) => {
     const icons: {[key: string]: string} = {
       health: 'fitness-center',
@@ -272,6 +368,21 @@ export default function GoalDetailScreen() {
                         )}
                       </View>
                       <View style={styles.phaseActions}>
+                        {/* 排序按钮 */}
+                        <IconButton
+                          name="arrow-upward"
+                          onPress={() => handleMovePhaseUp(index)}
+                          color="#8E8E93"
+                          size={18}
+                          disabled={index === 0}
+                        />
+                        <IconButton
+                          name="arrow-downward"
+                          onPress={() => handleMovePhaseDown(index)}
+                          color="#8E8E93"
+                          size={18}
+                          disabled={index === goal.phases.length - 1}
+                        />
                         <IconButton
                           name="add"
                           onPress={() => handleAddAction(phase.id)}
@@ -338,12 +449,29 @@ export default function GoalDetailScreen() {
                                   </Text>
                                 )}
                               </View>
-                              <IconButton
-                                name="delete"
-                                onPress={() => handleDeleteAction(action.id)}
-                                color="#FF3B30"
-                                size={18}
-                              />
+                              <View style={styles.actionActions}>
+                                {/* 排序按钮 */}
+                                <IconButton
+                                  name="arrow-upward"
+                                  onPress={() => handleMoveActionUp(phase.id, actionIndex)}
+                                  color="#8E8E93"
+                                  size={16}
+                                  disabled={actionIndex === 0}
+                                />
+                                <IconButton
+                                  name="arrow-downward"
+                                  onPress={() => handleMoveActionDown(phase.id, actionIndex)}
+                                  color="#8E8E93"
+                                  size={16}
+                                  disabled={actionIndex === phase.actions.length - 1}
+                                />
+                                <IconButton
+                                  name="delete"
+                                  onPress={() => handleDeleteAction(action.id)}
+                                  color="#FF3B30"
+                                  size={18}
+                                />
+                              </View>
                             </View>
                           ))
                       )}
@@ -518,6 +646,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     marginBottom: 12,
     alignItems: 'flex-start',
+  },
+  actionActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
   actionNumber: {
     width: 24,
