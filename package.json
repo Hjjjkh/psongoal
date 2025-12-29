@@ -19,20 +19,8 @@
     "lint": "pnpm --filter web lint"
   },
   "devDependencies": {
-    "pnpm": "^8.0.0",
-    "@types/node": "^20.11.24",
-    "@types/react": "^18.3.1",
-    "@types/react-dom": "^18.3.0",
-    "next": "^14.2.5",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "sonner": "^2.0.7",
-    "class-variance-authority": "^0.7.0",
-    "@radix-ui/react-slot": "^1.0.2",
-    "lucide-react": "^0.344.0",
-    "@dnd-kit/core": "^6.3.1",
-    "@dnd-kit/sortable": "^10.0.0",
-    "@dnd-kit/utilities": "^3.2.2"
+    "pnpm": "^8.15.9",
+    "typescript": "^5.4.5"
   },
   "engines": {
     "node": ">=18.0.0",
