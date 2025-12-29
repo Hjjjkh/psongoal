@@ -8,15 +8,19 @@
   "scripts": {
     "dev": "pnpm --filter web dev",
     "dev:web": "pnpm --filter web dev",
-    "dev:mobile": "pnpm --filter mobile start",
+    "dev:mobile": "pnpm --filter @psongoal/mobile start",
     "dev:desktop": "pnpm --filter desktop dev",
+    "android": "pnpm --filter @psongoal/mobile android",
+    "ios": "pnpm --filter @psongoal/mobile ios",
     "build": "pnpm --filter web build",
     "build:web": "pnpm --filter web build",
-    "build:mobile": "pnpm --filter mobile build",
+    "build:mobile": "pnpm --filter @psongoal/mobile build",
     "build:desktop": "pnpm --filter desktop build",
     "build:core": "pnpm --filter core build",
     "start": "pnpm --filter web start",
-    "lint": "pnpm --filter web lint"
+    "lint": "pnpm --filter web lint",
+    "lint:mobile": "pnpm --filter @psongoal/mobile lint",
+    "test:mobile": "pnpm --filter @psongoal/mobile test"
   },
   "devDependencies": {
     "pnpm": "^8.15.9",
